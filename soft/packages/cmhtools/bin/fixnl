@@ -1,0 +1,47 @@
+#! /usr/bin/perl -w
+#
+# $Id: fixnl,v 1.2 2006/05/24 23:35:50 cmhall Exp $
+#
+# Charles Hall <cmhall@hawaii.edu>
+#
+# Convert dos and/or mac newlines to unix style.  Reads from stdin and prints
+# converted file to stdout.
+#
+# example:
+#
+#  > fixnl < test.txt > fixed.txt
+
+use strict;
+
+use Getopt::Mixed;
+
+$| = 1;
+
+my $usage = <<END;
+usage: $0
+    [--help]
+
+--help
+    Print this help message.
+
+END
+
+Getopt::Mixed::init(
+    "help",
+);
+my %opts = ();
+while((my $option, my $value) = Getopt::Mixed::nextOption()) {
+    $opts{$option} = defined($value) ? $value : 1;
+}
+Getopt::Mixed::cleanup();
+
+if(defined($opts{'help'})) {
+    print "$usage\n";
+    exit;
+}
+
+while(<>) {
+    s/\r\n?/\n/g;
+    print;
+}
+

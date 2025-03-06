@@ -1,0 +1,11 @@
+ANNOVAR in sample_genome_variant_calling
+Mito use --sample_ploidy in the genotyper
+Put revision # as std output in all qsubs
+Remove trimmomatic from the cleaning stage in function library and qsubs
+Generate reduced bams
+Integrate the Haplotype Caller
+Check for previous .done files in qsubs
+Add STATS at 1X also (10X, 20X, ...)
+Define -A from in the init_IC...sh and in ALL launch scripts 
+Remove old scripts  (as launch_pipeline.exome.fastqs.serial.sh) 
+Define the single end pipeline

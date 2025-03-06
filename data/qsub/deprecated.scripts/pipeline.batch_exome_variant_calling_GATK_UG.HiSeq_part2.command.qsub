@@ -1,0 +1,42 @@
+#! /bin/bash
+
+#PBS -l nodes=1:ppn=12 -lmem=47g
+#PBS -l walltime=48:00:00
+#PBS -j oe
+#PBS -r n
+#PBS -W umask=002
+
+#GATK_DIR=$PIPELINE_HOME/soft/packages/GATK-git-2.7.2/dist
+#GATK_DIR=/RQexec/dionnela/soft/packages/GATK-git-2.7.2/dist
+#DBSNP=$PIPELINE_HOME/data/reference/dbsnp_132.b37.vcf
+#BED=$PIPELINE_HOME/data/targets/CCDS-RefSeq_Genes-SS_38mb_50mb_V4_V5-NG_V3_VCRome-TruSeq.v37.500_flanking.bed
+BED=$PIPELINE_HOME/data/targets/CCDS-RefSeq_Genes-SS_38mb_50mb_V4_V5_V5_Clinic_V7-NG_V3_VCRome-TruSeq_Nextera_1_2.v37.500_flanking.bed
+REF=$PIPELINE_HOME/data/reference/human_g1k_v37.fasta
+BAMS=$FREEZE.bam.list
+#RESOURCES=/RQexec/dionnela/data/ftp.broadinstitute.org/bundle/5974/b37/
+MAX_MEM=$(free -g|head -2|tail -1|awk '{print $4 + $NF}')
+
+cd $DIR
+mkdir $LSCRATCH/temp
+
+done=$DATE.$FREEZE.vcf.done; if [  ! -f $done ]; then java -Xmx${MAX_MEM}g -Djava.io.tmpdir=$LSCRATCH/temp -jar $GATK_DIR/dist/GenomeAnalysisTK.jar -T CombineVariants -R $REF --assumeIdenticalSamples --out $DATE.$FREEZE.vcf `for i in {1..22} X N; do ls -1 $DATE.$FREEZE.chr.$i.vcf; done | perl -ne 'chomp $_; print " --variant $_ "'` ; if [ $? -eq 0 ]; then touch $done; fi; fi
+
+done=$DATE.$FREEZE.SNPS.vcf.done; if [  ! -f $done ]; then java -Xmx${MAX_MEM}g -Djava.io.tmpdir=$LSCRATCH/temp -jar $GATK_DIR/dist/GenomeAnalysisTK.jar -T SelectVariants -R $REF --variant $DATE.$FREEZE.vcf --out $DATE.$FREEZE.SNPS.vcf --selectTypeToInclude SNP; if [ $? -eq 0 ]; then touch $done; fi; fi
+
+done=$DATE.$FREEZE.SNPS.VariantRecalibrator.done; if [  ! -f $done ]; then java -Xmx${MAX_MEM}g -Djava.io.tmpdir=$LSCRATCH/temp -jar $GATK_DIR/dist/GenomeAnalysisTK.jar -T VariantRecalibrator -nt 12 -R $REF --input $DATE.$FREEZE.SNPS.vcf --recal_file $DATE.$FREEZE.SNPS.recal --tranches_file $DATE.$FREEZE.SNPS.tranches -resource:hapmap,known=false,training=true,truth=true,prior=15.0 $PIPELINE_HOME/data/reference/hapmap_3.3.b37.sites.vcf --resource:omni,known=false,training=true,truth=true,prior=12.0 $PIPELINE_HOME/data/reference/1000G_omni2.5.b37.sites.vcf --resource:1000G,known=false,training=true,truth=false,prior=10.0 $PIPELINE_HOME/data/reference/1000G_phase1.snps.high_confidence.b37.vcf  --resource:dbsnp,known=true,training=false,truth=false,prior=2.0 $PIPELINE_HOME/data/reference/dbsnp_132.b37.vcf --use_annotation QD --use_annotation MQ --use_annotation MQRankSum --use_annotation ReadPosRankSum --use_annotation FS --use_annotation DP -mode SNP; if [ $? -eq 0 ]; then touch $done; fi; fi
+
+done=$DATE.$FREEZE.SNPS.ApplyRecalibration.done; if [  ! -f $done ]; then java -Xmx${MAX_MEM}g -Djava.io.tmpdir=$LSCRATCH/temp -jar $GATK_DIR/dist/GenomeAnalysisTK.jar -T ApplyRecalibration -R $REF --input $DATE.$FREEZE.SNPS.vcf --out $DATE.$FREEZE.SNPS.recalibrated.filtered.vcf --recal_file $DATE.$FREEZE.SNPS.recal --tranches_file $DATE.$FREEZE.SNPS.tranches --ts_filter_level 99.0; if [ $? -eq 0 ]; then touch $done; fi; fi
+
+done=$DATE.$FREEZE.INDELS.vcf.done; if [  ! -f $done ]; then java -Xmx${MAX_MEM}g -Djava.io.tmpdir=$LSCRATCH/temp -jar $GATK_DIR/dist/GenomeAnalysisTK.jar -T SelectVariants -R $REF --variant $DATE.$FREEZE.vcf --out $DATE.$FREEZE.INDELS.vcf --selectTypeToInclude INDEL; if [ $? -eq 0 ]; then touch $done; fi; fi
+
+done=$DATE.$FREEZE.INDELS.VariantRecalibrator.done; if [  ! -f $done ]; then java -Xmx${MAX_MEM}g -Djava.io.tmpdir=$LSCRATCH/temp -jar $GATK_DIR/dist/GenomeAnalysisTK.jar -T VariantRecalibrator -nt 12 -R $REF --input $DATE.$FREEZE.INDELS.vcf --recal_file $DATE.$FREEZE.INDELS.recal --tranches_file $DATE.$FREEZE.INDELS.tranches --maxGaussians 4 --resource:mills,known=false,training=true,truth=true,prior=12.0 $PIPELINE_HOME/data/reference/Mills_and_1000G_gold_standard.indels.b37.sites.vcf --resource:dbsnp,known=true,training=false,truth=false,prior=2.0 $PIPELINE_HOME/data/reference/dbsnp_132.b37.vcf --use_annotation QD --use_annotation DP --use_annotation FS --use_annotation ReadPosRankSum --use_annotation MQRankSum  -mode INDEL; if [ $? -eq 0 ]; then touch $done; fi; fi
+
+done=$DATE.$FREEZE.INDELS.ApplyRecalibration.done; if [  ! -f $done ]; then java -Xmx${MAX_MEM}g -Djava.io.tmpdir=$LSCRATCH/temp -jar $GATK_DIR/dist/GenomeAnalysisTK.jar -T ApplyRecalibration -R $REF --input $DATE.$FREEZE.INDELS.vcf --out $DATE.$FREEZE.INDELS.recalibrated.filtered.vcf --recal_file $DATE.$FREEZE.INDELS.recal --tranches_file $DATE.$FREEZE.INDELS.tranches -mode INDEL --ts_filter_level 99.0; if [ $? -eq 0 ]; then touch $done; fi; fi
+
+done=$DATE.$FREEZE.variants.recalibrated.filtered.combined.vcf.done; if [  ! -f $done ]; then java -Xmx${MAX_MEM}g -Djava.io.tmpdir=$LSCRATCH/temp -jar $GATK_DIR/dist/GenomeAnalysisTK.jar -T CombineVariants -R $REF --variant $DATE.$FREEZE.SNPS.recalibrated.filtered.vcf --variant $DATE.$FREEZE.INDELS.recalibrated.filtered.vcf --out $DATE.$FREEZE.variants.recalibrated.filtered.combined.vcf --assumeIdenticalSamples; if [ $? -eq 0 ]; then touch $done; fi; fi
+
+INFILE=$DIR/$DATE.$FREEZE.variants.recalibrated.filtered.combined.vcf
+done=$DATE.$FREEZE.ANNOVAR.done; if [  ! -f $done ]; then $PIPELINE_HOME/soft/packages/VarAnnot/vcf2annovar.pl -i $INFILE -b v37 -vc gatk -id $DATE.$FREEZE.freeze --verbose --exclude esp6500aa,esp6500ea,nci60,snp132,1kg_amr,1kg_afr,1kg_eas,1kg_sas,1kg_eur,exac_amr,exac_afr,exac_eas,exac_sas,exac_fin,exac_nfe,exac_oth; if [ $? -eq 0 ]; then touch $done; fi; fi
+
+
+done=$DATE.$FREEZE.eval.done; if [ ! -f $done ]; then awk 'BEGIN{FS=OFS="\t"}{if ($1!~/^#/) print $1,$2,$3,$4,$5,$6,"PASS",$8";set="$7; else print $1,$2,$3,$4,$5,$6,$7,$8}' $DATE.$FREEZE.SNPS.recalibrated.filtered.vcf > $DATE.$FREEZE.SNPS.recalibrated.filtered.eval_in.vcf; java -Xmx${MAX_MEM}g -Djava.io.tmpdir=$LSCRATCH/temp -jar $GATK_DIR/dist/GenomeAnalysisTK.jar -T VariantEval -R $REF --eval $DATE.$FREEZE.SNPS.recalibrated.filtered.eval_in.vcf --out $DATE.$FREEZE.SNPS.recalibrated.filtered.eval --dbsnp $PIPELINE_HOME/data/reference/dbsnp_132.b37.vcf --evalModule CompOverlap --evalModule CountVariants --evalModule TiTvVariantEvaluator -select 'set=="PASS"' -selectName PASS -select 'set=="TruthSensitivityTranche99.00to99.90"' -selectName TruthSensitivityTranche99.00to99.90 -select 'set=="TruthSensitivityTranche99.90to100.00"' -selectName TruthSensitivityTranche99.90to100.00 --doNotUseAllStandardModules; if [ $? -eq 0 ]; then touch $done; fi; fi

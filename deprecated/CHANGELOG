@@ -1,0 +1,190 @@
+>2019-03-01
+Added SureSelect V7 probes definitions
+
+>2017-09-28
+Rolling back to GATK 3.6 due to problems with tmp files in Genotyper
+>2017-09-13
+Updated most of the tools versions, prior to deployment to graham :
+fastqc 0.11.5
+GATK 3.8
+Java JRE 1.8.0_45
+picard lib 2.12.0
+trimmomatic 0.36
+bwa 0.7.16a
+samtools 1.3.1
+
+
+>2013-02-18
+modified function.library's picard functions to all haveVALIDATION_STRINGENCY=SILENT
+added export PERL5LIB=$PIPELINE_HOME/soft/packages/cmhtools/lib,so smp-runner can work on other systems
+added $ACCOUNT variable to wgs.bam.scatter (defaults toish-284-ab) for all qsub/msub submissions; added -a option to launch script
+added -1 and -2 to getopt portion of wgs.bam.scatter (it was accidentally omitted and has never come up)
+added fix for scinet gpc, which has msub present but diabled, thereby screwing up the test that defines QUEUE for all script launches in wgs.bam.scatter
+added patch for scinet gpc to wgs script 1_3, which forces $THREADS=1 (if [[ `uname -n` =~ ^gpc ]]); otherwise this step exceeds gpc node memory limit
+added $UNCOMPRESSED=1 to wgs.bam.scatter, and added $UNCOMPRESSED to sample_merge_fastq call in 1_1 and 1_2 (b/c SamToFastq outputfrom 0_1 is uncompressed, and $UNCOMPRESSED is not sent to 1_1 and 1_2 by wgs.bam.scatter)
+added export CMHTOOLS=$PIPELINE_HOME/soft/packages/ toinit_pipeline.sh (so that smp-runner won't fail on non-rqchp machines)
+replaced CN string in @RG tag in 1_3 with CN:Illumina (it wasCN:BGI by default). Ultimately will have to add options in launch script to specify sequencer and sequencing centre (now hardcoded as Illumina for both)
+modified genome.aligned_bam.scala to make case class cov members compatible with GATK1.6 (commented old lines)
+modified several things pertaining to ENC33 variable in wgs.bam.scatter: wgs.bam.scatter flag is now -I (doc updated w/details); function.library now uses ENC64 for clarity; also reflected in 0_1,1_1 and 1_2
+removed line(s) with "--memory_limit_threshold" from function.library (specific to GATKv2's Queue.jar)
+added -Xmx"$JAVA_MEM"g to function.library's alignment post-processing function (a bunch of genomes died in class cov for lack of memory)
+removed post-recal cov step from genome.aligned-bam.scala, because it takes a lot of time and we don't use the outputs!!
+added this.nt = qscript.ppn back to cas class cov; Alex removed it for GATK2 and as a result the run was exploding walltime
+replaced ContextCovariate with DinucCovariate in class cov
+replaced class recal with the same class from an earlier script (the one I removed was made for GATKv2)
+remove the "XXX_" from the sample_genome_variant_calling function in function.library
+created changelog file in svn rep, containing the above text
+
+>2013-02-19
+overhauled wgs.bam.scatter's handling of input arguments to match the style used in exome launch script
+added EXTRA_CONF config file utility to wgs.bam.scatter
+added CENTER, VERBOSE and SFS options to wgs.bam.scatter
+fixed minor bug in wgs.bam.scatter's handling of ".done" files
+created EXTRA_CONF files for illumina with server-specific values for briaree, cottos, colosse, guillimin, scinet (in ./data/templates)
+removed hardcoded "CN:Illumina" from 1_3 and replaced with new variable $CENTER
+added verbose outputs to all wgs.bam-specific functions in function.library
+added echo VERBOSE and SFS status to all wgs scatter scripts; made command echo dependent on VERBOSE=1
+added internal SFS and fail-point checks (.done files) to all wgs.scatter scripts with >1 library function (all except 0_1)...3_1 fail-checking is especially impressive
+cleaned up extraneous comments at the end of all wgs.scatter scripts
+server specific configs (with the -x option)
+verbosity level in the function library (with the -v option)
+added compileMappingStats.pl to the bin folder
+cleaned unused function in function.library
+
+>2013-02-27
+tiny change to scala from wgs.genome.bam pipeline: @Input var key: short name changed to "key" and not "k", to comply with sample_metrics_DepthOfCoverage call in function.library
+tiny change to function.library: DepthOfCoverage function no longer says it's launching capture-chip interval-based stats, but just "stats" (since genomes do no chip-based DofC)
+added GenomeAnalysisTK-2.2-16-g9f648cb folder to $PIPELINE_HOME/soft/packages (GATKv2.2 for UnifiedGenotyper runs
+added export GATK2_DIR to init.pipeline.sh, to point to folder above
+changed $GATK_DIR to $GATK2_DIR in function.library sample_genome_variant_calling (to use GATKv2.2); also removed "/dist" from java -jar command for -T UnifiedGenotyper in same function
+generate md5 for raw reads
+minor bugfixes for exome pipeline
+
+>2013-03-25
+minor change to wgs.genome.bam 3_1: removed hardcoded run names in job checkpointing; replaced with generic loop over keys of the "process" hash ("for run in ${!process[@]}; do ...")
+minor change to function.library sample_genome_variant_calling function: replaced hardcoded path to GATK2 with $PIPELINE_HOME prefix notation 
+Upgrade to GATK 2.4-3 (code + scripts)
+Determine the encoding automatically
+
+>2013-05-09
+Add Dindel (where was it?) and compilation related files
+
+>2013-06-14
+Modify the Exome pipeline to use multiple and dependant qsubs
+Move the sub-jobs scripts (qsubs) to data/qsub
+Exome pipeline can be launched with multiple runs (read groups)
+Update to GATK 2.6.4, java 7
+
+>2013-07-04
+change the perms for the .o* file
+change output runs for metrics : sample_metrics_parsePileup.out to ${GATK_EXOME}.parsePileup.out ..
+move outputs logs and qc to specific folder
+remove GL from dindel chromosome list
+move MT QC-metrics from part 3.1 to 2.2, part 3.1 contains only exome
+use unpaired reads in alignment
+
+>2013-08-02
+merged fastq- and bam-specific launch.pipeline.wgs scripts into a single script (launch.pipeline.wgs.scatter) and removed precursors from version control
+fixed errors in handling of msub/qsub dependency syntax in wgs.scatter and exome.fastq.scatter launch scripts
+fixed error in funciton.library for trimmomatic pre-processing that caused it to fail every time (incorrect bash "if" condition "-a $ADAPTERS")
+fixed checkpointing ambiguity in all launch scripts (find ./ -name "$done") to specify current folder only
+
+>2013-08-12
+modified the shebang interpreter to /usr/bin/env bash in qsubs to use bash 4.2
+cleaning old files (launch_pipeline.wgs.bams.scatter.sh.old, launch_pipeline.wgs.fastqs.scatter.sh.bak, scripts.bak, GATK-git-1.6-2012-05-03, GATK-torque-JF-07_24_12, jre1.6.0_38)
+
+>2013-09-10
+Add the sample cross contamination QC tests using verifyBamID
+Add statsFromRun package for parsePileup
+Add sortByRef.pl
+
+>2013-09-17
+fixed errors in handling of msub/qsub dependency syntax in wgs.scatter and exome.fastq.scatter launch scripts (again??!)
+
+>2013-09-18
+Add tabix to compress and index vcf files
+Add bwa-0.7.5a for bwa mem alignment algorithm
+
+>2013-09-26
+By default for the exomes, we call all bases of the kit
+Removed dindel from the standard flow
+Remove the non-primary alignments and put in seperate bam file
+Enable to copy final results to specific output dir
+
+>2013-11-11
+msub/qsub enhancements
+Added VarAnnot scripts
+Fixed bug for longs filenames (>1009 chars)
+changed pipeline.exome.part.3_1 to work independent of bash-4.2 (no more bash hash tables needed)
+
+>2013-12-19
+Minor modification of qsub scripts
+determine_base.perl now accepts uncompressed fastq
+
+>2014-01-24
+Cleaning svn, adding .svnignore list
+Extracting variant sites from total recall automatically
+
+>2014-01-30
+updated exome launch script to handle multiple fastq pairs with the same read group
+added/updated init files
+added batch variant calling pipeline scripts (i.e. "freeze" scripts)
+
+>2014-03-18
+Added two pipelines scripts: launch_pipeline.fluidigm.fastqs.serial.sh, launch_pipeline.nipt.MPSS_WGS.fastqs.scatter.sh
+Removed all occurences of BASH_4
+Cleaning old functions from the function library
+Removed logging in infividual files from within the function library, logging will occur in the corresponding qsub output
+Split the fastqc call withing sample_trimmomatic_preprocessing_w_outputs function to a different function, used by pipeline.generic.part_0_1.trimmomatic.qsub
+Assing the bam's read group at the launch script, to follow up to the end of pipeline
+
+>2014-04-08
+Modified launch_pipeline.exome.fastqs.scatter.sh to allow custom LIB and RUN parameters for sequences
+Added V5 and Nimblegen targets, with their combined counterpart.
+Added a QueueInterpreter to launch the pipeline in a serial matter.
+
+>2014-04-23
+update calling to produce variant sites index
+
+>2014-06-12
+Modified launch_pipeline.exome.fastqs.scatter.sh to output (hard-coded) version number; removed long-commented lines for dindel and cleanup and in top of script
+Modified launch_pipeline.batch_exome_variant_calling_GATK_UG.sh to point to new (hard-coded) resource locations on briaree:/alloc; added V5 as kit option; modified behaviour for PGX samples (can now handle batch numbers)
+
+>2014-06-19
+Updated sortByRef to include a --header argument, to output the first line without sorting
+
+>2014-08-04
+Added TruSeq3 PE sequencing adapters
+Added Nimblegen V3 exome kits target definitions
+Added script to clean the run (cleanup_pipeline.sh)
+Added tracks for UCSC Simple Repeats and Segmental Dups
+
+>2014-10-31
+Added target definitions for CCDS plus 6bps flanks, Nimblegen SeqCap EZ Exome v3 capture
+Added init pipeline definitions for TruSeq, NG_V3.HudsonAlpha, MPSS_WGS.IC
+
+>2016-04-27
+Add picard tools 2.2.2
+Add java 1.8 as primary java
+Update function lib to use picard 2 : add the unpaired file to avoid breaks in pipline for unmated reads in bam file
+Update the qsub for picard uses
+
+>2016-08-01
+Update java to jdk 1.8
+changed references to bwa_mem to bwa and REF_MEM to REF. Remove the old REF
+
+>2016-08-02
+removed all library functions, qsub scripts and init files pertaining to MIPs or SVs (which have been relocated to their own separate pipelines)
+corrected typo in pipeline.exome.part_3_1 that was causing capture kit to be mis-handled
+Add htslib-1.3.1 and samtools-1.3.1 source, and relevant soft links
+redirected soft/src/bwa to version 0.7.5a
+removed samtools-0.1.15 from soft/src
+removed parsePileup (statsFromRun) from soft/src and function.library
+modified samtools and bwa directories in data/templates/init_pipeline.sh, to point to soft links in soft/src
+updated README with installation details
+
+>2016-08-03
+Added the libs in java 1.8
+
+>2016-08-10
+Removed all references to ET Phone home

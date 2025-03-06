@@ -1,0 +1,60 @@
+#! /bin/bash
+
+#PBS -l nodes=1:ppn=12 -l mem=47g
+#PBS -l walltime=12:00:00
+#PBS -j oe
+#PBS -r n
+#PBS -W umask=002
+
+if [[ ! -n $CHROMOSOME ]]; then echo "PROBLEM while transfering CHROMOSOME variable"; exit 42; fi
+if [[ ! -n $USELD ]]; then echo "PROBLEM while transfering USELD variable"; exit 42; fi
+
+DBSNP=$PIPELINE_HOME/data/reference/dbsnp_132.b37.vcf
+#BED=$PIPELINE_HOME/data/targets/individual.chroms/CCDS-RefSeq_Genes-SS_38mb_50mb_V4_V5_V5_Clinic-NG_V3_VCRome-TruSeq.v37.chr.${CHROMOSOME}.500_flanking.bed
+BED=$PIPELINE_HOME/data/targets/individual.chroms/CCDS-RefSeq_Genes-SS_38mb_50mb_V4_V5_V5_Clinic_V7-NG_V3_VCRome-TruSeq_Nextera_1_2.v37.chr.${CHROMOSOME}.500_flanking.bed
+#BED=$CALLING_BED
+REF=$PIPELINE_HOME/data/reference/human_g1k_v37.fasta
+BAMS=$FREEZE.bam.list
+RESOURCES=/RQexec/dionnela/data/ftp.broadinstitute.org/bundle/5974/b37/
+
+#MAX_MEM=$(free -g|head -2|tail -1|awk '{print $4+$NF}')
+MAX_MEM=46
+mkdir $LSCRATCH/temp
+
+cd $DIR
+
+#unset LDPRELOAD
+#if [[ $USELD -eq 1 ]]; then
+#  LDPRELOAD="export IOBUFF_BUFFER_SIZE=4194304; LD_PRELOAD=$PIPELINE_HOME/soft/src/iobuff/libiobuff.so"
+#fi
+
+#if [ ! -f $DATE.$FREEZE.chr.${CHROMOSOME}.vcf.done ]; then $LDPRELOAD java -Xmx$[$MAX_MEM-3]g -Djava.io.tmpdir=$LSCRATCH/temp -jar $GATK_DIR/dist/GenomeAnalysisTK.jar -T UnifiedGenotyper -nt 12 -R $REF --input_file $BAMS --out $DATE.$FREEZE.chr.${CHROMOSOME}.vcf --metrics_file $DATE.$FREEZE.chr.${CHROMOSOME}.metrics --dbsnp $DBSNP --genotype_likelihoods_model BOTH --intervals $BED --downsample_to_coverage 1000  ; if [ $? -eq 0 ]; then touch $DATE.$FREEZE.chr.${CHROMOSOME}.vcf.done; fi; fi
+
+
+
+if [ ! -f $DATE.$FREEZE.chr.${CHROMOSOME}.vcf.done ]; then
+
+  if [[ $USELD -eq 1 ]]; then
+    export IOBUFF_BUFFER_SIZE=4194304;
+    LD_PRELOAD=$PIPELINE_HOME/soft/src/iobuff/libiobuff.so
+  fi
+
+  java -Xmx$[$MAX_MEM-3]g \
+      -Djava.io.tmpdir=$LSCRATCH/temp \
+      -jar $GATK_DIR/dist/GenomeAnalysisTK.jar \
+      -T UnifiedGenotyper \
+      -nt 12 \
+      -R $REF \
+      --input_file $BAMS \
+      --out $DATE.$FREEZE.chr.${CHROMOSOME}.vcf \
+      --metrics_file $DATE.$FREEZE.chr.${CHROMOSOME}.metrics \
+      --dbsnp $DBSNP \
+      --genotype_likelihoods_model BOTH \
+      --intervals $BED \
+      --downsample_to_coverage 1000
+
+  if [ $? -eq 0 ]; then
+    touch $DATE.$FREEZE.chr.${CHROMOSOME}.vcf.done
+  fi
+
+fi

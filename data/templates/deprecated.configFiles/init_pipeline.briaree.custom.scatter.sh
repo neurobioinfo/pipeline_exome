@@ -1,0 +1,11 @@
+export WALLTIME=48:0:0
+export SFS=0
+export KEEP_INTERMEDIATES=0
+export MAX_MEM=23
+export THREADS=12
+export CENTER=IRIC
+export ADAPTERS=$PIPELINE_HOME/data/templates/Adapters.ALL.minusPrefix.fasta
+#export QUEUE=qsub
+export QUEUE="qsub"
+#export GATK_DIR=/RQexec/dionnela/soft/packages//GenomeAnalysisTK-nightly-2016-11-25-gf5379ae-3.6
+export ACCOUNT=ish-284-ad

@@ -1,0 +1,183 @@
+#! /usr/bin/perl -w
+#
+# $Id: parse-genbank,v 1.4 2006/05/24 23:35:50 cmhall Exp $
+#
+# Charles Hall <cmhall@hawaii.edu>
+#
+# read in a genbank file and produce a multifasta file with all the coding
+# regions as individual sequences
+#
+# also produces a multifasta file of noncoding regions
+#
+# things like this have to be all on the same line:
+# 22..58
+# join(601..700,709..800)
+
+use strict;
+
+# coding regions
+my $CR_FILE = "coding.regions.fas";
+
+# noncoding regions
+my $NCR_FILE = "noncoding.regions.fas";
+
+open CR, ">$CR_FILE" or die "failed to create file: $CR_FILE";
+open NCR, ">$NCR_FILE" or die "failed to create file: $NCR_FILE";
+
+my $CDS_mode = 0;
+my $tRNA_mode = 0;
+my $origin_mode = 0;
+my @cr = ();
+my $region = '';
+my $line = '';
+my $seq = '';
+my @nc = ();
+
+while(<>) {
+    s/^\s+|\s+$//g;
+    if($CDS_mode) {
+        if(/locus_tag="(.*)"/) {
+            $CDS_mode = 0;
+            push @cr, { "type"=>"CDS", "locus_tag"=>$1, "region"=>$region };
+            if(!$region) { die "not region"; }
+        }
+    }
+    elsif($tRNA_mode) {
+        if(/locus_tag="(.*)"/) {
+            $tRNA_mode = 0;
+            push @cr, { "type"=>"tRNA", "locus_tag"=>$1, "region"=>$region };
+            if(!$region) { die "not region"; }
+        }
+    }
+    elsif($origin_mode) {
+        if(/^\d+ (.*)$/) {
+            $line = $1;
+            $line =~ s/ //g;
+            $seq .= $line;
+        }
+        else {
+            last;
+        }
+    }
+    else {
+        if(/^tRNA\s+(.+)$/) {
+            $tRNA_mode = 1;
+            $region = $1;
+        }
+        elsif(/^CDS\s+(.+)$/) {
+            $CDS_mode = 1;
+            $region = $1;
+        }
+        elsif(/^ORIGIN$/) {
+            $origin_mode = 1;
+        }
+    }
+}
+
+$seq = uc($seq);
+
+foreach my $c (sort mysort @cr) {
+    print $$c{"locus_tag"}."  :  ".$$c{"region"}."\n";
+    $$c{"code_s"} = &parse_region($$c{"region"});
+    printf CR ">%s type: %s region: %s\n", $$c{"locus_tag"}, $$c{"type"}, $$c{"region"};
+    printf CR "%s\n", $$c{"code_s"};
+}
+
+push @nc, 0;
+push @nc, length($seq) + 1;
+my @sorted_nc = sort {$a <=> $b} (@nc);
+
+my $i = 0;
+my $j = 0;
+my $bb = "noncoding.";
+my $count = 0;
+my $title = '';
+my $start = 0;
+my $end = 0;
+for($i=0;$i<@sorted_nc;$i+=2) {
+    $j = $i + 1;
+
+    my $start = $sorted_nc[$i] + 1;
+    my $end = $sorted_nc[$j] - 1;
+
+    if($start > $end) { next; } ### 0 length, skip
+
+    $title = sprintf("%s%04d : %d..%d", $bb, $count, $start, $end);
+    $count++;
+
+    print NCR ">$title\n";
+    print NCR substr($seq, $start - 1, $end - $start + 1)."\n";
+}
+
+close NCR;
+close CR;
+
+#
+# sort based on first 'range' in region
+#
+sub mysort() {
+    my $rega = $$a{"region"};
+    my $regb = $$b{"region"};
+
+    $rega =~ /(\d+)/;
+    my $regaa = $1;
+    $regb =~ /(\d+)/;
+    my $regbb = $1;
+
+    return $regaa <=> $regbb;
+}
+
+#
+#
+#
+sub parse_region() {
+    my ($reg) = @_;
+
+    $reg ||= '';
+
+    my $seg = '';
+
+    if(!$reg) { return ""; }
+
+    if($reg =~ /^(join|order)\((.*)\)/) {
+        $seg .= &parse_region($2);
+    }
+    elsif($reg =~ /^complement\((.*)\)/) {
+        $seg .= &rev_comp(&parse_region($1));
+    }
+    elsif($reg =~ /^\d+\.\.\d+/) {
+        my @segs = split(',', $reg);
+        foreach my $s (@segs) {
+            $s =~ /(\d+)\.\.(\d+)/;
+            my $s0 = $1;
+            my $s1 = $2;
+            $seg .= substr($seq, $s0-1, $s1-$s0+1);
+
+            # subtract from nc
+            push @nc, $s0;
+            push @nc, $s1;
+        }
+    }
+    else {
+        printf STDERR "error in parse_region\n";
+        exit(1);
+    }
+
+    return uc($seg);
+}
+
+#
+#
+#
+sub rev_comp() {
+    my ($s) = @_;
+
+    $s ||= '';
+
+    if(!$s) { return ""; }
+
+    $s = reverse($s);
+    $s =~ tr/ACGT/TGCA/;
+
+    return $s;
+}

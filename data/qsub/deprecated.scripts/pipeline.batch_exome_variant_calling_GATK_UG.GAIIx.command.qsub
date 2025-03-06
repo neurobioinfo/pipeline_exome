@@ -1,0 +1,38 @@
+#! /bin/bash
+
+#PBS -l nodes=1:ppn=12 -lmem=47g
+#PBS -l walltime=120:00:00
+#PBS -j oe
+#PBS -r n
+#PBS -W umask=002
+
+DBSNP=$PIPELINE_HOME/data/reference/dbsnp_132.b37.vcf
+BED=$PIPELINE_HOME/data/targets/CCDS-RefSeq_Genes-SS_38mb_50mb_V4_V5-NG_V3_VCRome-TruSeq.v37.500_flanking.bed
+REF=$PIPELINE_HOME/data/reference/human_g1k_v37.fasta
+BAMS=$FREEZE.bam.list
+RESOURCES=/RQexec/dionnela/data/ftp.broadinstitute.org/bundle/5974/b37/
+
+cd $DIR
+mkdir $LSCRATCH/temp
+
+done=$DATE.$FREEZE.vcf.done; if [  ! -f $done ]; then java -Xmx46g -Djava.io.tmpdir=$LSCRATCH/temp -jar $GATK_DIR/dist/GenomeAnalysisTK.jar -T UnifiedGenotyper -nt 12 -R $REF --input_file $BAMS --out $DATE.$FREEZE.vcf --metrics_file $DATE.$FREEZE.metrics --dbsnp $DBSNP --genotype_likelihoods_model BOTH --intervals $BED --downsample_to_coverage 500; if [ $? -eq 0 ]; then touch $done; fi; fi
+
+done=$DATE.$FREEZE.SNPS.vcf.done; if [  ! -f $done ]; then java -Xmx46g -Djava.io.tmpdir=$LSCRATCH/temp -jar $GATK_DIR/dist/GenomeAnalysisTK.jar -T SelectVariants -R $REF --variant $DATE.$FREEZE.vcf --out $DATE.$FREEZE.SNPS.vcf --selectTypeToInclude SNP; if [ $? -eq 0 ]; then touch $done; fi; fi
+
+done=$DATE.$FREEZE.SNPS.VariantRecalibrator.done; if [  ! -f $done ]; then java -Xmx46g -Djava.io.tmpdir=$LSCRATCH/temp -jar $GATK_DIR/dist/GenomeAnalysisTK.jar -T VariantRecalibrator -nt 12 -R $REF --input $DATE.$FREEZE.SNPS.vcf --recal_file $DATE.$FREEZE.SNPS.recal --tranches_file $DATE.$FREEZE.SNPS.tranches --use_annotation QD --use_annotation MQRankSum --use_annotation ReadPosRankSum --use_annotation FS --use_annotation DP --resource:hapmap,known=false,training=true,truth=true,prior=15.0 $RESOURCES/hapmap_3.3.b37.sites.vcf --resource:omni,known=false,training=true,truth=true,prior=12.0 $RESOURCES/1000G_omni2.5.b37.sites.vcf --resource:dbsnp,known=true,training=false,truth=false,prior=8.0 $RESOURCES/dbsnp_132.b37.vcf  -mode SNP; if [ $? -eq 0 ]; then touch $done; fi; fi
+
+done=$DATE.$FREEZE.SNPS.ApplyRecalibration.done; if [  ! -f $done ]; then java -Xmx46g -Djava.io.tmpdir=$LSCRATCH/temp -jar $GATK_DIR/dist/GenomeAnalysisTK.jar -T ApplyRecalibration -R $REF --input $DATE.$FREEZE.SNPS.vcf --out $DATE.$FREEZE.SNPS.recalibrated.filtered.vcf --recal_file $DATE.$FREEZE.SNPS.recal --tranches_file $DATE.$FREEZE.SNPS.tranches; if [ $? -eq 0 ]; then touch $done; fi; fi
+
+done=$DATE.$FREEZE.INDELS.vcf.done; if [  ! -f $done ]; then java -Xmx46g -Djava.io.tmpdir=$LSCRATCH/temp -jar $GATK_DIR/dist/GenomeAnalysisTK.jar -T SelectVariants -R $REF --variant $DATE.$FREEZE.vcf --out $DATE.$FREEZE.INDELS.vcf --selectTypeToInclude INDEL; if [ $? -eq 0 ]; then touch $done; fi; fi
+
+done=$DATE.$FREEZE.INDELS.VariantRecalibrator.done; if [  ! -f $done ]; then java -Xmx46g -Djava.io.tmpdir=$LSCRATCH/temp -jar $GATK_DIR/dist/GenomeAnalysisTK.jar -T VariantRecalibrator -nt 12 -R $REF --input $DATE.$FREEZE.INDELS.vcf --recal_file $DATE.$FREEZE.INDELS.recal --tranches_file $DATE.$FREEZE.INDELS.tranches --maxGaussians 4 --numBadVariants 1000 --resource:mills,known=false,training=true,truth=true,prior=12.0 $RESOURCES/Mills_and_1000G_gold_standard.indels.b37.sites.vcf --resource:dbsnp,known=true,training=false,truth=false,prior=2.0 $RESOURCES/dbsnp_132.b37.vcf --use_annotation DP --use_annotation FS --use_annotation ReadPosRankSum --use_annotation MQRankSum -mode INDEL; if [ $? -eq 0 ]; then touch $done; fi; fi
+
+done=$DATE.$FREEZE.INDELS.ApplyRecalibration.done; if [  ! -f $done ]; then java -Xmx46g -Djava.io.tmpdir=$LSCRATCH/temp -jar $GATK_DIR/dist/GenomeAnalysisTK.jar -T ApplyRecalibration -R $REF --input $DATE.$FREEZE.INDELS.vcf --out $DATE.$FREEZE.INDELS.recalibrated.filtered.vcf --recal_file $DATE.$FREEZE.INDELS.recal --tranches_file $DATE.$FREEZE.INDELS.tranches --mode INDEL; if [ $? -eq 0 ]; then touch $done; fi; fi
+
+done=$DATE.$FREEZE.variants.recalibrated.filtered.combined.vcf.done; if [  ! -f $done ]; then java -Xmx46g -Djava.io.tmpdir=$LSCRATCH/temp -jar $GATK_DIR/dist/GenomeAnalysisTK.jar -T CombineVariants -R $REF --variant $DATE.$FREEZE.SNPS.recalibrated.filtered.vcf --variant $DATE.$FREEZE.INDELS.recalibrated.filtered.vcf --out $DATE.$FREEZE.variants.recalibrated.filtered.combined.vcf --assumeIdenticalSamples; if [ $? -eq 0 ]; then touch $done; fi; fi
+
+INFILE=$DIR/$DATE.$FREEZE.variants.recalibrated.filtered.combined.vcf
+done=$DATE.$FREEZE.ANNOVAR.done; if [  ! -f $done ]; then /RQexec/dionnela/soft/packages/VarAnnot/vcf2annovar.pl -i $INFILE -b v37 -vc gatk -id $DATE.$FREEZE.freeze -d snp132; if [ $? -eq 0 ]; then touch $done; fi; fi
+
+done=$DATE.$FREEZE.eval.done; if [ ! -f $done ]; then awk 'BEGIN{FS=OFS="\t"}{if ($1!~/^#/) print $1,$2,$3,$4,$5,$6,"PASS",$8";set="$7; else print $1,$2,$3,$4,$5,$6,$7,$8}' $DATE.$FREEZE.SNPS.recalibrated.filtered.vcf > $DATE.$FREEZE.SNPS.recalibrated.filtered.eval_in.vcf; java -Xmx46g -Djava.io.tmpdir=$LSCRATCH/temp -jar $GATK_DIR/dist/GenomeAnalysisTK.jar -T VariantEval -R $REF --eval $DATE.$FREEZE.SNPS.recalibrated.filtered.eval_in.vcf --out $DATE.$FREEZE.SNPS.recalibrated.filtered.eval --dbsnp $DBSNP --evalModule CompOverlap --evalModule CountVariants --evalModule TiTvVariantEvaluator -select 'set=="PASS"' -selectName PASS -select 'set=="TruthSensitivityTranche99.00to99.90"' -selectName TruthSensitivityTranche99.00to99.90 -select 'set=="TruthSensitivityTranche99.90to100.00"' -selectName TruthSensitivityTranche99.90to100.00 --doNotUseAllStandardModules; if [ $? -eq 0 ]; then touch $done; fi; fi
+

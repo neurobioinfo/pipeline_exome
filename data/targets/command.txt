@@ -1,0 +1,13 @@
+#bedtools merge -i <(cat SureSelect_All_Exon_V5_Clinic_without_annotation.v37.bed CCDS-RefSeq_Genes-SS_38mb_50mb_V4_V5-NG_V3_VCRome-TruSeq-without_annotation.v37.bed | sort -k2,2n | sortByRef.pl --tmp . - ../reference/human_g1k_v37.fasta.fai) > CCDS-RefSeq_Genes-SS_38mb_50mb_V4_V5_Clinic-NG_V3_VCRome-TruSeq-without_annotation.v37.bed
+
+bedtools merge -i <(cat CCDS.v37.bed RefSeq.Genes.v37.all_exons.no_flanks.sort.bed SureSelect_All_Exon_38mb.v37.bed SureSelect_All_Exon_50mb.v37.bed SureSelect_All_Exon_V4.v37.bed SureSelect_All_Exon_V5_Clinic.v37.bed SureSelect_All_Exon_V5.v37.bed Nimblegen_SeqCap_EZ_Exome_v3_primary.v37.bed Nimblegen_SeqCap_HGSC_VCRome_Design_Regions.v37.bed TruSeq_Exome_Targeted_Regions.b37.bed Illumina_Nextera_Rapid_Capture_Exome_Targeted_Regions_1.0_37Mbps_2013-03-07.v37.bed Illumina_Nextera_Rapid_Capture_Exome_Targeted_Regions_1.2_54Mbps_2014-03-12.v37.bed | sort -k2,2n | cut -f1,2,3 | sortByRef.pl --tmp . - ../reference/human_g1k_v37.fasta.fai) > CCDS-RefSeq_Genes-SS_38mb_50mb_V4_V5_V5_Clinic-NG_V3_VCRome-TruSeq_Nextera_1_2.v37.bed
+
+
+paste <(cat ../reference/human_g1k_v37.dict | grep -oP "SN:.+\tLN:" | sed -e 's/SN://' -e 's/\tLN://') <(cat ../reference/human_g1k_v37.dict | grep -oP "LN:.+\tUR:" | sed -e 's/LN://' -e 's/\tUR://') > v37.genome
+
+bedtools slop -i SureSelect_All_Exon_V5_Clinic_without_annotation.v37.bed -g v37.genome -b 500 | bedtools merge -i - > SureSelect_All_Exon_V5_Clinic_without_annotation.v37.500_flanking.bed
+
+
+for i in {1..22} X; do grep -P "^$i\t" CCDS-RefSeq_Genes-SS_38mb_50mb_V4_V5_V5_Clinic-NG_V3_VCRome-TruSeq_Nextera_1_2.v37.500_flanking.bed > individual.chroms/CCDS-RefSeq_Genes-SS_38mb_50mb_V4_V5_V5_Clinic-NG_V3_VCRome-TruSeq_Nextera_1_2.v37.chr.${i}.500_flanking.bed > ; done
+
+#and add remaing chromosomes by hand , WITHOUT the MT chromosome

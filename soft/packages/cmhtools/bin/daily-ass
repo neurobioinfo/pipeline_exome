@@ -1,0 +1,334 @@
+#! /bin/sh
+#
+# $Id: daily-ass,v 1.7 2006/05/31 00:22:45 cmhall Exp $
+#
+# Charles Hall <cmhall@hawaii.edu>
+
+# Automates data preparation and assembly of papaya.
+
+# full path to the location where daily assemblies are kept
+dailydir=/storage01/papaya/AssemblyTests/cmhall/celera/papaya/daily
+
+# number of proccesses to use in general
+smp=32
+
+# number of processes to use for copying files
+smp_copy=100
+
+# full path to chloroplast file
+chloro_file=/home/cmhall/contam/papaya_chloroplast_final.fasta
+
+# full path to mitochondria file
+mito_file=/home/cmhall/contam/A.thaliana-mito-genome
+
+# full paths to files
+fasta=/storage01/papaya/processed/fasta
+qual=/storage01/papaya/processed/qual
+ab1=/storage01/papaya/raw/ab1
+phd=/storage01/papaya/raw/phd
+
+# make sure we are in $dailydir
+initialdir=`pwd`
+cd $dailydir
+
+# Create a temporary directory to do the daily assembly.  It is
+# initially hidden, so if anyone is looking they will only see the
+# ones that are completed.  After it is finished, the directories are
+# rotated.
+rm -rf .temp
+mkdir .temp
+cd .temp
+
+# generate lists of fasta and qual
+mkdir lists
+find $fasta -name "*.fasta" | sort > lists/all.fasta.list
+sed -i '/papayaBES051109fmt/d' lists/all.fasta.list
+find $qual -name "*.qual" | sort > lists/all.qual.list
+
+# copy fasta and qual to local directory
+mkdir seqs.0 seqs
+smp-runner --smp=$smp_copy --command='cp <1> seqs.0' < lists/all.fasta.list
+smp-runner --smp=$smp_copy --command='cp <1> seqs.0' < lists/all.qual.list
+
+# do a sanity check
+# This makes sure the fasta and quality files match up and there is a
+# quality value for every base pair
+find seqs.0 -name "*.fasta" | sort > lists/seqs.sane.fasta.list
+find seqs.0 -name "*.qual" | sort > lists/seqs.sane.qual.list
+paste lists/seqs.sane.fasta.list lists/seqs.sane.qual.list > lists/sane.0
+smp-runner --smp=$smp --log=lists/log.0 --command='fasta-qual-sanity --seq=<1> --qual=<2>' < lists/sane.0
+grep 'error:' lists/log.0 && touch insane.0 || touch sane.0
+
+# generate 'name-only' seqs list
+find seqs.0 -name "P3K*.fasta" | sed 's/^.*\///' | sed 's/\.fasta$//' | sort > lists/seqs.P3K.list
+find seqs.0 -name "P6K*.fasta" | sed 's/^.*\///' | sed 's/\.fasta$//' | sort > lists/seqs.P6K.list
+find seqs.0 -name "P8K*.fasta" | sed 's/^.*\///' | sed 's/\.fasta$//' | sort > lists/seqs.P8K.list
+find seqs.0 -name "pbac*.fasta" | sed 's/^.*\///' | sed 's/\.fasta$//' | sort > lists/seqs.pbac.list
+cat lists/seqs.P3K.list lists/seqs.P6K.list lists/seqs.P8K.list lists/seqs.pbac.list | sort > lists/seqs.list
+
+# simplify names
+smp-runner --smp=$smp --command='fasta-simp-names < seqs.0/<1>.fasta > seqs/<1>.fasta' < lists/seqs.list
+smp-runner --smp=$smp --command='fasta-simp-names < seqs.0/<1>.qual > seqs/<1>.qual' < lists/seqs.list
+
+# trimming
+mkdir seqs.trim
+smp-runner --smp=$smp --command='lucy -vector /home/cmhall/vector/pMCL200 /home/cmhall/vector/pMCL200.splice -out seqs.trim/<1>.fasta seqs.trim/<1>.qual seqs/<1>.fasta seqs/<1>.qual > /dev/null 2>&1' < lists/seqs.P3K.list
+smp-runner --smp=$smp --command='lucy -vector /home/cmhall/vector/pMCL200 /home/cmhall/vector/pMCL200.splice -out seqs.trim/<1>.fasta seqs.trim/<1>.qual seqs/<1>.fasta seqs/<1>.qual > /dev/null 2>&1' < lists/seqs.P6K.list
+smp-runner --smp=$smp --command='lucy -vector /home/cmhall/vector/pMCL200 /home/cmhall/vector/pMCL200.splice -out seqs.trim/<1>.fasta seqs.trim/<1>.qual seqs/<1>.fasta seqs/<1>.qual > /dev/null 2>&1' < lists/seqs.P8K.list
+smp-runner --smp=$smp --command='lucy -vector /home/cmhall/vector/pBeloBAC11 /home/cmhall/vector/pBeloBAC11.splice -out seqs.trim/<1>.fasta seqs.trim/<1>.qual seqs/<1>.fasta seqs/<1>.qual > /dev/null 2>&1' < lists/seqs.pbac.list
+smp-runner --smp=$smp --command='trim.plx --seq=seqs.trim/<1>.fasta --qual=seqs.trim/<1>.qual' < lists/seqs.list
+find seqs.trim -size 0 -exec rm -f {} \;
+
+# generate 'name-only' seqs.trim list
+find seqs.trim -name "P3K*.fasta" | sed 's/^.*\///' | sed 's/\.fasta$//' | sort > lists/seqs.trim.P3K.list
+find seqs.trim -name "P6K*.fasta" | sed 's/^.*\///' | sed 's/\.fasta$//' | sort > lists/seqs.trim.P6K.list
+find seqs.trim -name "P8K*.fasta" | sed 's/^.*\///' | sed 's/\.fasta$//' | sort > lists/seqs.trim.P8K.list
+find seqs.trim -name "pbac*.fasta" | sed 's/^.*\///' | sed 's/\.fasta$//' | sort > lists/seqs.trim.pbac.list
+cat lists/seqs.trim.*.list | sort > lists/seqs.trim.list
+
+# screening. screen out chloroplast and mitochondria contaminated
+# sequences.  eventually, we will check for chimeric sequences...
+# somehow.
+mkdir seqs.trim.screen
+smp-runner --smp=$smp --command="blastz $chloro_file seqs.trim/<1>.fasta.t > seqs.trim.screen/<1>.c.z" < lists/seqs.trim.list
+smp-runner --smp=$smp --command="blastz $mito_file seqs.trim/<1>.fasta.t > seqs.trim.screen/<1>.m.z" < lists/seqs.trim.list
+smp-runner --smp=$smp --command='parse_bz.sh < seqs.trim.screen/<1>.c.z > seqs.trim.screen/<1>.c.hits' < lists/seqs.trim.list
+smp-runner --smp=$smp --command='parse_bz.sh < seqs.trim.screen/<1>.m.z > seqs.trim.screen/<1>.m.hits' < lists/seqs.trim.list
+smp-runner --smp=$smp --command='cat seqs.trim.screen/<1>.c.hits seqs.trim.screen/<1>.m.hits | sort | uniq > seqs.trim.screen/<1>.c.m.hits' < lists/seqs.trim.list
+smp-runner --smp=$smp --command='fasta-strip-seqs --list=seqs.trim.screen/<1>.c.m.hits < seqs.trim/<1>.fasta > seqs.trim.screen/<1>.fasta 2> seqs.trim.screen/<1>.fasta.stripped' < lists/seqs.trim.list
+smp-runner --smp=$smp --command='fasta-strip-seqs --list=seqs.trim.screen/<1>.c.m.hits < seqs.trim/<1>.fasta.t > seqs.trim.screen/<1>.fasta.t 2> seqs.trim.screen/<1>.fasta.stripped.t' < lists/seqs.trim.list
+smp-runner --smp=$smp --command='fasta-strip-seqs --list=seqs.trim.screen/<1>.c.m.hits < seqs.trim/<1>.qual > seqs.trim.screen/<1>.qual 2> seqs.trim.screen/<1>.qual.stripped' < lists/seqs.trim.list
+smp-runner --smp=$smp --command='fasta-strip-seqs --list=seqs.trim.screen/<1>.c.m.hits < seqs.trim/<1>.qual.t > seqs.trim.screen/<1>.qual.t 2> seqs.trim.screen/<1>.qual.stripped.t' < lists/seqs.trim.list
+find seqs.trim.screen -size 0 -exec rm -f {} \;
+
+#
+# generate lists for calculating stats and average qual
+#
+find seqs -name "P3K*.fasta" | sort > lists/seqs.P3K.fasta.list
+find seqs -name "P6K*.fasta" | sort > lists/seqs.P6K.fasta.list
+find seqs -name "P8K*.fasta" | sort > lists/seqs.P8K.fasta.list
+find seqs -name "pbac*.fasta" | sort > lists/seqs.pbac.fasta.list
+find seqs -name "P3K*.qual" | sort > lists/seqs.P3K.qual.list
+find seqs -name "P6K*.qual" | sort > lists/seqs.P6K.qual.list
+find seqs -name "P8K*.qual" | sort > lists/seqs.P8K.qual.list
+find seqs -name "pbac*.qual" | sort > lists/seqs.pbac.qual.list
+find seqs -name "*.fasta" | sort > lists/seqs.fasta.list
+find seqs -name "*.qual" | sort > lists/seqs.qual.list
+
+find seqs.trim -name "P3K*.fasta.t" | sort > lists/seqs.trim.P3K.fasta.t.list
+find seqs.trim -name "P6K*.fasta.t" | sort > lists/seqs.trim.P6K.fasta.t.list
+find seqs.trim -name "P8K*.fasta.t" | sort > lists/seqs.trim.P8K.fasta.t.list
+find seqs.trim -name "pbac*.fasta.t" | sort > lists/seqs.trim.pbac.fasta.t.list
+find seqs.trim -name "P3K*.qual.t" | sort > lists/seqs.trim.P3K.qual.t.list
+find seqs.trim -name "P6K*.qual.t" | sort > lists/seqs.trim.P6K.qual.t.list
+find seqs.trim -name "P8K*.qual.t" | sort > lists/seqs.trim.P8K.qual.t.list
+find seqs.trim -name "pbac*.qual.t" | sort > lists/seqs.trim.pbac.qual.t.list
+find seqs.trim -name "*.fasta.t" | sort > lists/seqs.trim.fasta.t.list
+find seqs.trim -name "*.qual.t" | sort > lists/seqs.trim.qual.t.list
+
+find seqs.trim.screen -name "P3K*.fasta.t" | sort > lists/seqs.trim.screen.P3K.fasta.t.list
+find seqs.trim.screen -name "P6K*.fasta.t" | sort > lists/seqs.trim.screen.P6K.fasta.t.list
+find seqs.trim.screen -name "P8K*.fasta.t" | sort > lists/seqs.trim.screen.P8K.fasta.t.list
+find seqs.trim.screen -name "pbac*.fasta.t" | sort > lists/seqs.trim.screen.pbac.fasta.t.list
+find seqs.trim.screen -name "P3K*.qual.t" | sort > lists/seqs.trim.screen.P3K.qual.t.list
+find seqs.trim.screen -name "P6K*.qual.t" | sort > lists/seqs.trim.screen.P6K.qual.t.list
+find seqs.trim.screen -name "P8K*.qual.t" | sort > lists/seqs.trim.screen.P8K.qual.t.list
+find seqs.trim.screen -name "pbac*.qual.t" | sort > lists/seqs.trim.screen.pbac.qual.t.list
+find seqs.trim.screen -name "*.fasta.t" | sort > lists/seqs.trim.screen.fasta.t.list
+find seqs.trim.screen -name "*.qual.t" | sort > lists/seqs.trim.screen.qual.t.list
+
+echo "\
+seqs.P3K.fasta.list                     seqs.P3K
+seqs.P6K.fasta.list                     seqs.P6K
+seqs.P8K.fasta.list                     seqs.P8K
+seqs.pbac.fasta.list                    seqs.pbac
+seqs.fasta.list                         seqs
+seqs.trim.P3K.fasta.t.list              seqs.trim.P3K
+seqs.trim.P6K.fasta.t.list              seqs.trim.P6K
+seqs.trim.P8K.fasta.t.list              seqs.trim.P8K
+seqs.trim.pbac.fasta.t.list             seqs.trim.pbac
+seqs.trim.fasta.t.list                  seqs.trim
+seqs.trim.screen.P3K.fasta.t.list       seqs.trim.screen.P3K
+seqs.trim.screen.P6K.fasta.t.list       seqs.trim.screen.P6K
+seqs.trim.screen.P8K.fasta.t.list       seqs.trim.screen.P8K
+seqs.trim.screen.pbac.fasta.t.list      seqs.trim.screen.pbac
+seqs.trim.screen.fasta.t.list           seqs.trim.screen" > lists/stats.todo
+
+echo "\
+seqs.P3K.qual.list                     seqs.P3K
+seqs.P6K.qual.list                     seqs.P6K
+seqs.P8K.qual.list                     seqs.P8K
+seqs.pbac.qual.list                    seqs.pbac
+seqs.qual.list                         seqs
+seqs.trim.P3K.qual.t.list              seqs.trim.P3K
+seqs.trim.P6K.qual.t.list              seqs.trim.P6K
+seqs.trim.P8K.qual.t.list              seqs.trim.P8K
+seqs.trim.pbac.qual.t.list             seqs.trim.pbac
+seqs.trim.qual.t.list                  seqs.trim
+seqs.trim.screen.P3K.qual.t.list       seqs.trim.screen.P3K
+seqs.trim.screen.P6K.qual.t.list       seqs.trim.screen.P6K
+seqs.trim.screen.P8K.qual.t.list       seqs.trim.screen.P8K
+seqs.trim.screen.pbac.qual.t.list      seqs.trim.screen.pbac
+seqs.trim.screen.qual.t.list           seqs.trim.screen" > lists/avg.qual.todo
+
+mkdir stats
+smp-runner --smp=$smp --command='cat `cat lists/<1>` | fasta-stats > stats/<2>.stats' < lists/stats.todo
+smp-runner --smp=$smp --command='cat `cat lists/<1>` | grep ">" | wc -l > stats/<2>.count' < lists/stats.todo
+smp-runner --smp=$smp --command="cat \`cat lists/<1>\` | avg-qual | awk '{count++;sum+=\$2;} END {if(count != 0)print sum/count;else print \"empty\";}' > stats/<2>.aq" < lists/avg.qual.todo
+
+###########################################################
+# additional statistics stuff from pavel
+###########################################################
+cd stats
+
+{ cat <<HERE
+x<-scan(file("dist"))
+postscript("stats.eps", horizontal=FALSE, onefile=FALSE, paper="special", height=6, width=6)
+plot(seq(100,1500,100),x,cex=0.45,type="h",lty=1,lwd=5,main="Length distribution",xlab="length",ylab="amount")
+dev.off() 
+q()
+HERE
+} > stats.r
+
+for i in seqs             seqs.P3K             seqs.P6K             seqs.P8K             seqs.pbac \
+         seqs.trim        seqs.trim.P3K        seqs.trim.P6K        seqs.trim.P8K        seqs.trim.pbac \
+         seqs.trim.screen seqs.trim.screen.P3K seqs.trim.screen.P6K seqs.trim.screen.P8K seqs.trim.screen.pbac; do
+
+    total=`grep 'total' $i.stats | awk '{print $2;}'`
+    avglen=`grep 'avg len' $i.stats | awk '{print $3;}'`
+    avgqual=`cat $i.aq`
+    grep 'bp' $i.stats | awk '{print $2;}' > dist
+    
+    R CMD BATCH stats.r
+    
+    epstopdf stats.eps
+    
+    { cat <<HERE
+\documentclass{article}
+\usepackage{subfig,graphicx}
+\begin{document}
+\title{Report}
+\author{Altix bot}
+\maketitle
+\section{Summary}
+Total sequences found: $total \newline
+Average sequence length: $avglen \newline
+Average quality: $avgqual \newline
+\begin{center}
+\includegraphics[totalheight=2.3in]{stats.pdf}
+\end{center}
+\end{document}
+HERE
+    } > $i.stats.tex
+    
+    pdflatex $i.stats.tex
+
+    rm -f dist stats.eps stats.pdf
+
+done
+
+cd ..
+###########################################################
+# end of additional statistics stuff from pavel
+###########################################################
+
+# get ready for assembly
+mkdir edit_dir chromat_dir phd_dir
+find seqs.trim.screen -name "*.fasta" | sort > lists/seqs.trim.screen.fasta.list
+find seqs.trim.screen -name "*.qual" | sort > lists/seqs.trim.screen.qual.list
+
+# do another sanity check to make sure nothing went wrong
+paste lists/seqs.trim.screen.fasta.list lists/seqs.trim.screen.qual.list > lists/sane.1
+smp-runner --smp=$smp --log=lists/log.1 --command='fasta-qual-sanity --seq=<1> --qual=<2>' < lists/sane.1
+grep 'error:' lists/log.1 && touch insane.1 || touch sane.1
+
+# concatenate fasta and quality files into edit_dir
+for i in `cat lists/seqs.trim.screen.fasta.list`; do cat $i | fasta-simp-names >> edit_dir/fasta.papaya; done
+for i in `cat lists/seqs.trim.screen.qual.list`; do cat $i | fasta-simp-names >> edit_dir/qual.papaya; done
+
+# generate clear file
+for i in `cat lists/seqs.trim.screen.fasta.list`; do grep '>' $i | sed 's/^>//' | awk '{print $1 " " $5 " " $6}' >> edit_dir/out.clr; done
+
+cd edit_dir
+
+# generate xml and mates file
+gen-xml-mates --xml=xml.papaya --mates=mates.papaya < fasta.papaya
+
+# finally, do the assembly
+tarchive2ca -o papaya -c out.clr fasta.papaya
+/storage01/papaya/AssemblyTests/cmhall/celera/packages/runCA.euk papaya.frg
+
+# create amos bank file
+toAmos -f papaya.frg -a papaya.asm -o papaya.afg
+bank-transact -m papaya.afg -b papaya.bnk -c
+
+cd ..
+
+#
+# It was hoped that we would be able to use consed with to view
+# the assemblies from celera.  It turns out that's very difficult.
+# Some progress was made, but we never really got there.  Below, the
+# consed related stuff is commented out, but left in if someone
+# ever has a lot of free time and wants to work on it some more.
+#
+
+# setup the ab1 and phd files for consed to work
+#find $ab1 -name "*.ab1" | sort > lists/ab1.list
+#find $phd -name "*.phd.1" | sort > lists/phd.list
+#cd chromat_dir
+# this takes too long and isn't useful unless we can use consed.
+# also, this takes too long
+#smp-runner --smp=$smp --command='ln -s <1>' < ../lists/ab1.list
+#cd ..
+# this takes too long and isn't useful unless we can use consed
+#smp-runner --smp=$smp_copy --command='cp <1> phd_dir' < lists/phd.list
+
+# make sure phd files have no carriage returns
+# I guess these are here because base-calling is done on windows
+#cd phd_dir
+#find . -name "*.phd.1" | sort > list
+#smp-runner --smp=$smp --command='dos2unix <1> > /dev/null 2>&1' < list
+#cd ..
+
+# create consed ace file
+#cd edit_dir
+#ca2ace papaya.asm
+
+# there are some problems with getting consed to work with celera output
+# just running ca2ace above doesn't work.
+# 1) the dates of the phd files have to be the same as in the *.ace file.
+# 2) there are still some complaints from consed about the 'number of points'
+#    in the chromat file not matching with the phd file.  i guess consed only
+#    works perfectly if phred is used to do the base calling. 
+#sed -i 's/ PHD_FILE:/.ab1 PHD_FILE:/' papaya.ace
+#sed -i 's/TIME:.*$/TIME: Sun Jan 10 10:00:00 2006/' papaya.ace
+#/home/cmhall/bin/determineReadTypes.perl
+#cd ../phd_dir
+#ls > list
+#smp-runner --smp=$smp --command="sed -i 's/TIME:.*$/TIME: Sun Jan 10 10:00:00 2006/' <1>" < list
+#cd ..
+
+# contig, scaffold, and singleton info
+cd edit_dir
+/storage01/papaya/AssemblyTests/cmhall/celera/packages/parsecasm.pl papaya.asm
+ca2scaff -i papaya.asm -o papaya
+/storage01/papaya/AssemblyTests/cmhall/celera/packages/scaff2fasta.pl papaya.asm
+/storage01/papaya/AssemblyTests/cmhall/celera/packages/ca2singletons.pl -i papaya.asm -f papaya.frg -o papaya.singletons.fasta
+cd ..
+
+# leave temp directory
+cd ..
+
+# Rotate the daily assembly directories.
+# daily.4 -> /dev/null, ..., .temp -> daily.0
+rm -rf .z
+mv daily.4 .z
+rm -rf .z &
+mv daily.3 daily.4
+mv daily.2 daily.3
+mv daily.1 daily.2
+mv daily.0 daily.1
+mv .temp daily.0
+
+# go back where we started from
+cd $initialdir

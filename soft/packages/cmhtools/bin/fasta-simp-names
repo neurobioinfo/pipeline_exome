@@ -1,0 +1,55 @@
+#! /usr/bin/perl -w
+#
+# $Id: fasta-simp-names,v 1.2 2006/05/24 23:35:50 cmhall Exp $
+#
+# Charles Hall <cmhall@hawaii.edu>
+#
+# Simplify the title lines of a fasta file to just contain the first space
+# delimited element.
+#
+# example:
+#
+#  > fasta-simp-names < reads.fasta > reads2.fasta
+
+use strict;
+
+use Getopt::Mixed;
+
+#defaults
+
+$| = 1;
+
+my $usage = <<END;
+usage: $0
+    [--help]
+
+--help
+    Print this help message.
+
+END
+
+Getopt::Mixed::init(
+    "help",
+);
+my %opts = ();
+while((my $option, my $value) = Getopt::Mixed::nextOption()) {
+    $opts{$option} = defined($value) ? $value : 1;
+}
+Getopt::Mixed::cleanup();
+
+if(defined($opts{'help'})) {
+    print "$usage\n";
+    exit;
+}
+
+while(<>) {
+    s/^\s+|\s+$//g;
+
+    if(/^(>[^\s]+)/) {
+        print "$1\n";
+    }
+    else {
+        print "$_\n";
+    }
+}
+

@@ -1,0 +1,175 @@
+#!/usr/bin/env bash
+
+#PBS -l walltime=168:0:0
+#PBS -r n
+#PBS -j oe
+#PBS -W umask=002
+
+umask 002
+
+#-----------------------------------------------------#
+#                                                     #
+# INITIALIZE VARIABLES                                #
+#                                                     #
+#-----------------------------------------------------#
+if [[ -z $SAMPLE ]]; then echo "ERROR: you must supply SAMPLE variable as -v to qsub"; exit 42; fi
+if [[ -z $DIR ]]; then echo "ERROR: you must supply DIR variable as -v to qsub"; exit 42; fi
+if [[ -z $THREADS ]]; then echo "ERROR: you must supply THREADS variable as -v to qsub"; exit 42; fi
+#if [[ -z $MAX_MEM ]]; then echo "ERROR: you must supply MiAX_MEM variable as -v to qsub"; exit 42; fi
+if [[ -z $PIPELINE_HOME ]]; then echo "ERROR: you must supply PIPELINE_HOME variable as -v to qsub"; exit 42; fi
+if [[ -z $CAPTURE_KIT ]]; then echo "ERROR: you must supply CAPTURE_KIT variable as -v to qsub"; exit 42; fi
+if [[ -z $DONE ]]; then echo "ERROR: you must supply DONE variable as -v to qsub"; exit 42; fi
+if [[ -z $SFS ]]; then export SFS=0; fi
+
+NAME=pipeline.exome.part_3_1.stats_QC
+echo "****************************************"
+echo "* ${NAME}.qsub"
+echo "****************************************"
+echo "* SAMPLE:        $SAMPLE"
+echo "* DIR:           $DIR"
+echo "* THREADS:       $THREADS"
+#echo "* MAX_MEM:       $MAX_MEM"
+echo "* PIPELINE_HOME: $PIPELINE_HOME"
+echo "* CAPTURE_KIT:   $CAPTURE_KIT"
+echo "* SFS            $SFS"
+echo "* VERBOSE        $VERBOSE"
+echo "* DONE:          $DONE"
+
+#-----------------------------------------------------#
+#                                                     #
+# START PIPELINE                                      #
+#                                                     #
+#-----------------------------------------------------#
+cd $DIR
+# INIT PIPELINE VARIABLES
+. $PIPELINE_HOME/data/templates/init_pipeline.sh $PIPELINE_HOME
+# DEFINING PIPELINE SPECIFIC VARIABLES
+# LOAD FUNCTION LIBRARY
+. $PIPELINE_HOME/data/templates/function.library
+# INIT THE SAMPLE
+set_verbose $VERBOSE
+sample_init $SAMPLE $DIR
+if [ $FUNCTION_LIBRARY_INIT -ne 1 ];   then echo "INIT SAMPLE PROBLEM"; exit 42; fi
+if [ $CAPTURE_KIT == "SS38" ];         then export BED=$BED38;          export BED_FLANK=$BED38_FLANK
+elif [ $CAPTURE_KIT == "SS50" ];       then export BED=$BED50;          export BED_FLANK=$BED50_FLANK
+elif [ $CAPTURE_KIT == "SSV4" ];       then export BED=$BEDV4;          export BED_FLANK=$BEDV4_FLANK
+elif [ $CAPTURE_KIT == "SSV5" ];       then export BED=$BEDV5;          export BED_FLANK=$BEDV5_FLANK
+elif [ $CAPTURE_KIT == "SSV5C" ];      then export BED=$BEDV5CLINIC;    export BED_FLANK=$BEDV5CLINIC_FLANK
+elif [ $CAPTURE_KIT == "SSV7" ];       then export BED=$BEDV7;          export BED_FLANK=$BEDV7_FLANK
+elif [ $CAPTURE_KIT == "TruSeq" ];     then export BED=$BEDTS;          export BED_FLANK=$BEDTS_FLANK
+elif [ $CAPTURE_KIT == "Nextera10" ];  then export BED=$BEDNEXTERA_10;  export BED_FLANK=$BEDNEXTERA_10_FLANK
+elif [ $CAPTURE_KIT == "Nextera12" ];  then export BED=$BEDNEXTERA_12;  export BED_FLANK=$BEDNEXTERA_12_FLANK
+elif [ $CAPTURE_KIT == "NGv3" ];       then export BED=$BEDNGv3;        export BED_FLANK=$BEDNGv3_FLANK
+elif [ $CAPTURE_KIT == "NGvCRome" ];   then export BED=$BEDNGvCRome;    export BED_FLANK=$BEDNGvCRome_FLANK
+elif [ $CAPTURE_KIT == "CCDS" ];       then export BED=$BEDCCDS;        export BED_FLANK=$BEDCCDS_FLANK
+fi
+echo "* BED:           $BED"
+echo "* BED_FLANK:     $BED_FLANK"
+
+if [[ -z $BAMFILE ]]; then BAMFILE=${GATK_EXOME_BAMFILE}; fi
+echo "* BAMFILE:       $BAMFILE"
+
+
+echo "****************************************"
+
+##########################################
+## FULL PIPELINE - EXOME
+echo "*** STARTING STATS AND QC"
+##########################################
+cd $DIR
+
+## METRICS
+#donefile_parsePileup=.${SAMPLE}.${NAME}.parsePileup.done
+donefile_DofC_noFlank=.${SAMPLE}.${NAME}.DofC_noFlank.done
+donefile_DofC_500Flank=.${SAMPLE}.${NAME}.DofC_500Flank.done
+donefile_DofC_RefSeq=.${SAMPLE}.${NAME}.DofC_RefSeq.done
+donefile_flagstat=.${SAMPLE}.${NAME}.flagstat.done
+donefile_verifyBamID=.${SAMPLE}.${NAME}.verifyBamID.done
+
+#execute jobs
+if [[ $SFS -eq 1 || ! `find ./ -maxdepth 1 -name "$DONE"` ]]; then
+#  if [[ $SFS -eq 1 || ! `find ./ -maxdepth 1 -name $donefile_parsePileup` ]]; then
+#    if [ $VERBOSE ]; then echo "****** CMD: sample_metrics_parsePileup $BAMFILE $BED $CAPTURE_KIT";fi 
+#    sample_metrics_parsePileup $BAMFILE $BED $CAPTURE_KIT 2>&1 > ${SAMPLE}.${NAME}.parsePileup.out & process_parsePileup=${!}
+#  fi
+  if [[ $SFS -eq 1 || ! `find ./ -maxdepth 1 -name $donefile_DofC_noFlank` ]]; then
+    if [ $VERBOSE ]; then echo "****** CMD: sample_metrics_DepthOfCoverage $REF $BAMFILE ${SAMPLE}.exome.kit_${CAPTURE_KIT}.no_flank $BED";fi
+    sample_metrics_DepthOfCoverage $REF $BAMFILE ${SAMPLE}.exome.kit_${CAPTURE_KIT}.no_flank $BED 2>&1 > ${SAMPLE}.${NAME}.DofC_noFlank.out & process_DofC_noFlank=${!}
+  fi
+  if [[ $SFS -eq 1 || ! `find ./ -maxdepth 1 -name $donefile_DofC_500Flank` ]]; then
+    if [ $VERBOSE ]; then echo "****** CMD: sample_metrics_DepthOfCoverage $REF $BAMFILE ${SAMPLE}.exome.kit_${CAPTURE_KIT}.500bp_flank $BED_FLANK";fi
+    sample_metrics_DepthOfCoverage $REF $BAMFILE ${SAMPLE}.exome.kit_${CAPTURE_KIT}.500bp_flank $BED_FLANK 2>&1 > ${SAMPLE}.${NAME}.DofC_500Flank.out & process_DofC_500Flank=${!}
+  fi
+  if [[ $SFS -eq 1 || ! `find ./ -maxdepth 1 -name $donefile_DofC_RefSeq` ]]; then
+    if [ $VERBOSE ]; then echo "****** CMD: sample_metrics_DepthOfCoverage $REF $BAMFILE ${SAMPLE}.exome.RefSeq_genes $GENE_BED $GENE_LIST"; fi
+    sample_metrics_DepthOfCoverage $REF $BAMFILE ${SAMPLE}.exome.RefSeq_genes $GENE_BED $GENE_LIST 2>&1 > ${SAMPLE}.${NAME}.DofC_RefSeq.out & process_DofC_RefSeq=${!}
+  fi
+  if [[ $SFS -eq 1 || ! `find ./ -maxdepth 1 -name $donefile_flagstat` ]]; then
+    if [ $VERBOSE ]; then echo "****** CMD: sample_metrics_flagstat ${BAMFILE} ${GATK_EXOME_PREFIX}.${SAMPLE}.flagstat";fi
+    sample_metrics_flagstat ${BAMFILE} ${BAMFILE}.flagstat 2>&1 > ${SAMPLE}.${NAME}.flagstat.out & process_flagstat=${!}
+  fi
+  if [[ $SFS -eq 1 || ! `find ./ -name $donefile_verifyBamID` ]]; then
+    if [ $VERBOSE ]; then echo "****** CMD: sample_metrics_verifyBamID ${BAMFILE} ${GATK_EXOME_PREFIX}.${SAMPLE}.verifyBamID";fi
+    sample_metrics_verifyBamID ${BAMFILE} ${BAMFILE}.verifyBamID 2>&1 > ${SAMPLE}.${NAME}.verifyBamID.out & process_verifyBamID=${!}
+  fi
+
+  #iterate over keys of hash "process" to get exit status and create .done file (if job succeeded); track overall METRICS step failure
+  unset failure
+#  run=parsePileup
+#  if [ $process_parsePileup ]; then
+#    wait $process_parsePileup; status=$?
+#    if [ $VERBOSE ]; then echo "run=$run"; echo "process id: $process_parsePileup"; echo "exit status: $status"; echo "donefile: $donefile_parsePileup"; fi
+#    if [ $status -eq 0 ]; then echo sub-run $run SUCCESS; touch $donefile_parsePileup; else echo "*** $run run failed"; failure=1; fi
+#  else
+#    echo "SKIPPED sub-run $run"
+#  fi
+
+  run=DofC_noFlank
+  if [ $process_DofC_noFlank ]; then
+    wait $process_DofC_noFlank; status=$?
+    if [ $VERBOSE ]; then echo "run=$run"; echo "process id: $process_DofC_noFlank"; echo "exit status: $status"; echo "donefile: $donefile_DofC_noFlank"; fi
+    if [ $status -eq 0 ]; then echo sub-run $run SUCCESS; touch $donefile_DofC_noFlank; else echo "*** $run run failed"; failure=1; fi
+  else
+    echo "SKIPPED sub-run $run"
+  fi
+
+  run=DofC_500Flank
+  if [ $process_DofC_500Flank ]; then
+    wait $process_DofC_500Flank; status=$?
+    if [ $VERBOSE ]; then echo "run=$run"; echo "process id: $process_DofC_500Flank"; echo "exit status: $status"; echo "donefile: $donefile_DofC_500Flank"; fi
+    if [ $status -eq 0 ]; then echo sub-run $run SUCCESS; touch $donefile_DofC_500Flank; else echo "*** $run run failed"; failure=1; fi
+  else
+    echo "SKIPPED sub-run $run"
+  fi
+
+  run=DofC_RefSeq
+  if [ $process_DofC_RefSeq ]; then
+    wait $process_DofC_RefSeq; status=$?
+    if [ $VERBOSE ]; then echo "run=$run"; echo "process id: $process_DofC_RefSeq"; echo "exit status: $status"; echo "donefile: $donefile_DofC_RefSeq"; fi
+    if [ $status -eq 0 ]; then echo sub-run $run SUCCESS; touch $donefile_DofC_RefSeq; else echo "*** $run run failed"; failure=1; fi
+  else
+    echo "SKIPPED sub-run $run"
+  fi
+
+  run=flagstat
+  if [ $process_flagstat ]; then
+    wait $process_flagstat; status=$?
+    if [ $VERBOSE ]; then echo "run=$run"; echo "process id: $process_flagstat"; echo "exit status: $status"; echo "donefile: $donefile_flagstat"; fi
+    if [ $status -eq 0 ]; then echo sub-run $run SUCCESS; touch $donefile_flagstat; else echo "*** $run run failed"; failure=1; fi
+  else
+    echo "SKIPPED sub-run $run"
+  fi
+
+  run=verifyBamID
+  if [ $process_verifyBamID ]; then
+    wait $process_verifyBamID; status=$?
+    if [ $VERBOSE ]; then echo "run=$run"; echo "process id: $process_verifyBamID"; echo "exit status: $status"; echo "donefile: $donefile_verifyBamID"; fi
+    if [ $status -eq 0 ]; then echo sub-run $run SUCCESS; touch $donefile_verifyBamID; else echo "*** $run run failed"; failure=1; fi
+  else
+    echo "SKIPPED sub-run $run"
+  fi
+
+  #create .done file for entire METRICS step, if all sub-jobs ran successfully
+  if [ $failure ]; then exit 42; else touch $DONE; if [ $VERBOSE ]; then echo SUCCESS; fi;  fi
+else if [ $VERBOSE ]; then echo "****** SKIP Metrics"; fi
+fi

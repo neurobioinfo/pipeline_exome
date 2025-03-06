@@ -1,0 +1,55 @@
+#! /usr/bin/perl -w
+#
+# $Id: avg-qual,v 1.3 2006/05/24 23:35:50 cmhall Exp $
+#
+# Charles Hall <cmhall@hawaii.edu>
+#
+# Reads a quality file from stdin and prints out the average quality
+# value of each sequence.
+#
+# example:
+#
+# cmhall@bio3:~/dev/cmhtools2/bin> ./avg-qual < P3K-30001.F.qual 
+# P3K-30001-A01.F:              7.348
+# cmhall@bio3:~/dev/cmhtools2/bin>
+
+use strict;
+use Env qw(CMHTOOLS);
+use lib "$CMHTOOLS/lib";
+use DnaFasta;
+use QualFasta;
+use Getopt::Mixed;
+
+my $DEFAULT_FILE       = '';
+
+$| = 1;
+
+my $usage = <<END;
+usage: $0
+    [--help]
+
+--help
+    Print this help message.
+
+END
+
+Getopt::Mixed::init(
+    "help",
+);
+my %opts = ();
+while((my $option, my $value) = Getopt::Mixed::nextOption()) {
+    $opts{$option} = defined($value) ? $value : 1;
+}
+Getopt::Mixed::cleanup();
+
+if(defined($opts{'help'})) {
+    print "$usage\n";
+    exit;
+}
+
+my $file = $ARGV[0] || $DEFAULT_FILE;
+
+my $fasta = '';
+$fasta = new QualFasta($file);
+
+$fasta->print_avg_qual();

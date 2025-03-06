@@ -1,0 +1,74 @@
+#! /bin/sh
+#
+# $Id: gen-fake-ass,v 1.3 2006/05/24 23:32:39 cmhall Exp $
+#
+# Charles Hall <cmhall@hawaii.edu>
+
+#
+# Generates a 'fake' assembly that can be viewed with consed.
+#
+
+#
+# Set these parameters for gen-reads for each run.
+#
+nrp=100
+insert=3000
+std=300
+smp=32
+
+#
+# First command line argument should be the name of a single
+# fasta file which we want to simulate wgs on.
+#
+file=$1
+
+# precleaning
+rm -rf edit_dir phd_dir chromat_dir
+
+# Create the directories that consed expects
+mkdir edit_dir
+mkdir phd_dir
+mkdir chromat_dir
+
+# generate the reads
+gen-reads --nrp=$nrp --insert=$insert --std=$std < $file
+mv reads.fasta reads.qual edit_dir
+
+#
+# Enter the edit directory, and split up the fasta file containing the
+# generated reads into individual files, then rename them according to
+# CGPBR standard naming scheme.  After renamed, generate a 'fake'
+# trace file for each, and move the traces to chromat_dir.
+#
+cd edit_dir
+fasta-splitter --max=1 --name=read < reads.fasta
+cd splits
+find . -name "read.*" | sort > list
+for i in `cat list`; do grep '>' $i | sed 's/^>//' >> names; done
+paste list names > mov
+smp-runner --smp=$smp --command='mv <1> <2>.fas' < mov
+find . -name "*.fas" | sort | sed 's/\.fas$//' > list2
+smp-runner --smp=$smp --command='mktrace <1>.fas <1>.ab1' < list2
+smp-runner --smp=$smp --command='mv <1>.ab1 ../../chromat_dir' < list2
+cd ..
+cd ..
+
+#
+# Here's where it gets confusing.  We are now going to use phred to
+# base call the 'fake' chromat files we created.  The reason is consed
+# doesn't like to use phd or fasta files that weren't created with the
+# programs in its package
+#
+cd chromat_dir
+phred -id . -pd ../phd_dir
+cd ..
+
+#
+# Now create the fasta and quality files.
+#
+cd phd_dir
+phd2fasta -id . -os reads.fas -oq reads.qual
+mv -f reads.fas reads.qual ../edit_dir
+rm -f ../edit_dir/reads.fasta
+determineReadTypes.perl
+cd ..

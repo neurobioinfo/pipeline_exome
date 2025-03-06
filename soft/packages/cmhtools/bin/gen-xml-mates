@@ -1,0 +1,245 @@
+#! /usr/bin/perl -w
+#
+# $Id: gen-xml-mates,v 1.2 2006/05/24 23:32:39 cmhall Exp $
+#
+# Charles Hall <cmhall@hawaii.edu>
+#
+# This script takes a directory containing sequences and
+# build the arachne TraceInfo xml file based on the following
+# name scheme  ex: p3k-C-0670-I01.y1.I01
+#
+# 1/1/2006, cmhall
+# Modified to work with new naming scheme:
+# P3K-31201-A02.y1
+#
+# 3/9/2006, cmhall
+# Reads were renamed to format:
+# P3K-30001-A01.F
+#
+# There are still some crazy ones in 96-well plates
+# Plus bacs are not renamed
+
+use strict;
+use Getopt::Mixed;
+
+#defaults
+my $DEFAULT_XML_FILE = '';
+my $DEFAULT_MATES_FILE = '';
+my $CENTER_NAME        = "CGPBR";
+my $CENTER_PROJECT     = "PAPAYA";
+my $INSERT_FLANK_LEFT  = "";
+my $INSERT_FLANK_RIGHT = "";
+my $INSERT_SIZE        = "";
+my $INSERT_STDEV       = "";
+my $LIBRARY_ID         = "";
+my $MATE               = "";
+my $NCBI_PROJECT_ID    = "";
+my $PLATE_ID           = "";
+my $PROGRAM_ID         = "ABI-KB 1.2";
+my $SEQ_LIB_ID         = "";
+my $SOURCE_TYPE        = "G";
+my $SPECIES_CODE       = "Carica Papaya";
+my $STRATEGY           = "WGA";
+my $SUBMISSION_TYPE    = "NEW";
+my $TEMPLATE_ID        = "";
+my $TRACE_END          = "";
+my $TRACE_FILE         = "";
+my $TRACE_FORMAT       = "ABI";
+my $TRACE_NAME         = "";
+my $TRACE_TYPE_CODE    = "WGS";
+my $WELL_ID            = "";
+
+$| = 1;
+
+my $usage = <<END;
+usage: $0
+    [--help]
+    --xml=<xml_output_file>
+    --mates=<mates_output_file>
+
+--help
+    Print this help message.
+
+END
+
+Getopt::Mixed::init(
+    "help",
+    "xml=s",
+    "mates=s",
+);
+my %opts = ();
+while((my $option, my $value) = Getopt::Mixed::nextOption()) {
+    $opts{$option} = defined($value) ? $value : 1;
+}
+Getopt::Mixed::cleanup();
+
+if(defined($opts{'help'})) {
+    print "$usage\n";
+    exit;
+}
+
+my $xml_file = $opts{'xml'} || $DEFAULT_XML_FILE;
+my $mates_file = $opts{'mates'} || $DEFAULT_MATES_FILE;
+
+# check that both --xml and --mates were given.
+if(!$xml_file || !$mates_file) {
+    die "--xml and --mates are required parameters";
+}
+
+my $pmcl200_for_begin  = "GTGGCGGCCGCTCTAGAACTAGTGGATCCCCCGGGCTGCAGGAATTCGAT";
+my $pmcl200_for_end    = "ATCAAGCTTATCGATACCGTCGACCTCGAGGGGGGGCCCGGTACCAGCTT";
+my $pmcl200_rev_begin  = "AAGCTGGTACCGGGCCCCCCCTCGAGGTCGACGGTATCGATAAGCTTGAT";
+my $pmcl200_rev_end    = "ATCGAATTCCTGCAGCCCGGGGGATCCACTAGTTCTAGAGCGGCCGCCAC";
+
+my $pbelo_for_begin = "AGCTCGGTACCCGGGGATCCTCTAGAGTCGACCTGCAGGCATGCAAGCTT";
+my $pbelo_for_end   = "GAGTATTCTATAGTGTCACCTAAATAGCTTGGCGTAATCATGGTCATAGC";
+my $pbelo_rev_begin = "ACCATGATTACGCCAAGCTATTTAGGTGACACTATAGAATACTCAAGCTT";
+my $pbelo_rev_end   = "GCATGCCTGCAGGTCGACTCTAGAGGATCCCCGGGTACCGAGCTCGAATT";
+
+my $center_name        = $CENTER_NAME;
+my $center_project     = $CENTER_PROJECT;
+my $insert_flank_left  = $INSERT_FLANK_LEFT;
+my $insert_flank_right = $INSERT_FLANK_RIGHT;
+my $insert_size        = $INSERT_SIZE;
+my $insert_stdev       = $INSERT_STDEV;
+my $library_id         = $LIBRARY_ID;
+my $mate               = $MATE;
+my $ncbi_project_id    = $NCBI_PROJECT_ID;
+my $plate_id           = $PLATE_ID;
+my $program_id         = $PROGRAM_ID;
+my $seq_lib_id         = $SEQ_LIB_ID;
+my $source_type        = $SOURCE_TYPE;
+my $species_code       = $SPECIES_CODE;
+my $strategy           = $STRATEGY;
+my $submission_type    = $SUBMISSION_TYPE;
+my $template_id        = $TEMPLATE_ID;
+my $trace_end          = $TRACE_END;
+my $trace_file         = $TRACE_FILE;
+my $trace_format       = $TRACE_FORMAT;
+my $trace_name         = $TRACE_NAME;
+my $trace_type_code    = $TRACE_TYPE_CODE;
+my $well_id            = $WELL_ID;
+
+my %is = (
+            '3'=>'3000',
+            '6'=>'6000',
+            '8'=>'6000',  
+         );
+my %isd = (
+            '3'=>'300',
+            '6'=>'600',
+            '8'=>'600',
+          );
+
+open XML, ">$xml_file" or die "cannot create output file";
+open MATES, ">$mates_file" or die "cannot create mates file";
+
+print XML "<?xml version=\"1.0\"?>\n";
+print XML "<trace_volume>\n";
+
+while(<>) {
+    chomp;
+
+    if(/^>([^\s]+) ?/) {
+
+        my $title = $1;
+
+        # P3K-31910-A01.F
+        # P3K-3011506-2-A01.F
+        # P3K-3011506-2-2-A01.F
+        # P3K-3011506-2-2-2-A01.F
+        # P3K-355-1-3K-A01.F
+        if($title =~ /^P(\d)K-(.*)-(.\d\d)\.([FR])$/) {
+            $insert_flank_left  = $4 eq "F" ?  $pmcl200_for_begin : $pmcl200_rev_begin;
+            $insert_flank_right = $4 eq "F" ?  $pmcl200_for_end   : $pmcl200_rev_end;
+            $insert_size = $is{$1};
+            $insert_stdev = $isd{$1};
+            $library_id = "P$1K";
+            $mate = $title;
+            $plate_id = $2;
+            $seq_lib_id = "P$1K";
+            $trace_end = $4;
+            $trace_file = "$title.ab1";
+            $trace_name = $title;
+            $well_id = $3;
+
+            if($mate =~ /F$/) { $mate =~ s/F$/R/; }
+            else { $mate =~ s/R$/F/; }
+
+            $template_id = $title;
+            $template_id =~ s/\.[FR]$//;
+
+            &print_trace();
+        }
+        # pbac-33B-HO8.F
+        elsif($title =~ /^(pbac)-(.*)-(...)\.([FR])$/) {
+            $insert_flank_left  = $4 eq "F" ?  $pbelo_for_begin : $pbelo_rev_begin;
+            $insert_flank_right = $4 eq "F" ?  $pbelo_for_end   : $pbelo_rev_end;
+            # 4/20/2006, cmhall
+            # Jimmy says that he heard from somebody else that the bac clones
+            # were approximately ranged from 90Kb to 150kb
+            $insert_size = 120000;
+            $insert_stdev = 50000;
+            $library_id = "pbac";
+            $mate = $title;
+            $plate_id = $2;
+            $seq_lib_id = "pbac";
+            $trace_end = $4;
+            $trace_file = "$title.ab1";
+            $trace_name = $title;
+            $well_id = $3;
+
+            if($mate =~ /F$/) { $mate =~ s/F$/R/; }
+            else { $mate =~ s/R$/F/; }
+
+            $template_id = $title;
+            $template_id =~ s/\.[FR]$//;
+
+            &print_trace();
+        }
+        else {
+            print STDERR "unknown: $title\n";
+        }
+    }
+    else {
+        next;
+    }
+}
+
+
+print XML "</trace_volume>\n";
+
+close XML;
+close MATES;
+
+sub print_trace() {
+    print XML <<END;
+  <trace>
+    <center_name>$center_name</center_name>
+    <center_project>$center_project</center_project>
+    <insert_flank_left>$insert_flank_left</insert_flank_left>
+    <insert_flank_right>$insert_flank_right</insert_flank_right>
+    <insert_size>$insert_size</insert_size>
+    <insert_stdev>$insert_stdev</insert_stdev>
+    <library_id>$library_id</library_id>
+    <mate>$mate</mate>
+    <ncbi_project_id>$ncbi_project_id</ncbi_project_id>
+    <plate_id>$plate_id</plate_id>
+    <program_id>$program_id</program_id>
+    <seq_lib_id>$seq_lib_id</seq_lib_id>
+    <source_type>$source_type</source_type>
+    <species_code>$species_code</species_code>
+    <strategy>$strategy</strategy>
+    <submission_type>$submission_type</submission_type>
+    <template_id>$template_id</template_id>
+    <trace_end>$trace_end</trace_end>
+    <trace_file>$trace_file</trace_file>
+    <trace_format>$trace_format</trace_format>
+    <trace_name>$trace_name</trace_name>
+    <trace_type_code>$trace_type_code</trace_type_code>
+    <well_id>$well_id</well_id>
+  </trace>
+END
+
+    print MATES "$trace_name $mate\n";
+}

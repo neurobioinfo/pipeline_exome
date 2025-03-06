@@ -1,0 +1,12 @@
+#! /usr/local/bin/perl -w
+
+use strict;
+use diagnostics;
+use Env qw(CMHTOOLS);
+use lib "$CMHTOOLS/lib";
+use QualFasta;
+
+my $width = 60;
+
+my $f = new QualFasta($ARGV[0]);
+$f->print($width);

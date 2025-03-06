@@ -1,0 +1,16 @@
+export WALLTIME=1:0:0
+export SFS=0
+export KEEP_INTERMEDIATES=0
+export MAX_MEM=23
+export THREADS=12
+export CENTER=IC
+export ADAPTERS=/RQexec/spiegelm/pipeline_analysis/MIP/accessory.files/fasta/Adapters.IC.MIPs.2014-01-22.fasta
+export QUEUE=qsub
+#export QUEUE=$PIPELINE_HOME/soft/src/queueInterpreter/QueueInterpreter
+export ACCOUNT=ish-284-ad
+export CAPTURE_KIT=MIP
+export REFERENCE=/RQexec/spiegelm/data/pipeline.svn/data/reference/human_g1k_v37.fasta
+export PREFIX=MIP
+export DOWNSAMPLE=100000
+export MOLECULAR_TAG_LENGTH=12
+export TAGGED_READ_NUMBER=2

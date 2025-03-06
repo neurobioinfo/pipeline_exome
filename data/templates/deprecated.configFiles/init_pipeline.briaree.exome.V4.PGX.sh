@@ -1,0 +1,11 @@
+export WALLTIME=48:0:0
+export SFS=0
+export KEEP_INTERMEDIATES=0
+export MAX_MEM=23
+export THREADS=12
+export CENTER=PGX
+export ADAPTERS=$PIPELINE_HOME/data/templates/Adapters.Pgx.2012.fasta
+export QUEUE=qsub
+export ACCOUNT=ish-284-ad
+export CAPTURE_KIT=SSV4
+export SITES=$PIPELINE_HOME/data/targets/Exome.sites.list

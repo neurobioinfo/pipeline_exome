@@ -1,0 +1,208 @@
+#! /usr/bin/perl -w
+#
+# $Id: fasta-clean,v 1.2 2006/05/24 23:35:50 cmhall Exp $
+#
+# Charles Hall <cmhall@hawaii.edu>
+#
+# Remove all completely ambiguous (NX) and zero length sequences from a
+# multifasta file.  *.fasta file to be cleaned is read from stdin.  Cleaned
+# fasta file is printed to stdout.  A fasta file containing all the sequences
+# that were removed is printed to stderr.
+#
+# example:
+#
+#  > fasta-clean < orig.fasta > orig.fasta.clean 2> orig.fasta.removed
+
+use strict;
+
+use Getopt::Mixed;
+
+$| = 1;
+
+my $DEFAULT_MIN_LENGTH  = 0;
+my $DEFAULT_MIN_CONTENT = 0;
+my $DEFAULT_MIN_PERCENT = 0;
+
+my $usage = <<END;
+usage: $0
+    [--help]
+    [--min-length=<n>]
+    [--min-content=<n>]
+    [--min-percent=<n>]
+
+--help
+    Print this help message.
+
+--min-length=<n>
+    If specified, sequences shorter than <n> will be removed.
+
+--min-content=<n>
+    If specified, sequences without a contiguous segment of at least <n> real
+    bases [ACGT] are removed.
+
+--min-percent=<n>
+    If specified, sequences without at least <n> percent [ACGT] are removed.
+
+END
+
+Getopt::Mixed::init(
+    "help",
+    "min-length=i",
+    "min-content=i",
+    "min-percent=f",
+);
+my %opts = ();
+while((my $option, my $value) = Getopt::Mixed::nextOption()) {
+    $opts{$option} = defined($value) ? $value : 1;
+}
+Getopt::Mixed::cleanup();
+
+if(defined($opts{'help'})) {
+    print "$usage\n";
+    exit;
+}
+
+my $min_length = $DEFAULT_MIN_LENGTH;
+if(defined($opts{'min-length'})) {
+    $min_length = $opts{'min-length'};
+}
+
+my $min_content = $DEFAULT_MIN_CONTENT;
+if(defined($opts{'min-content'})) {
+    $min_content = $opts{'min-content'};
+}
+
+my $min_percent = $DEFAULT_MIN_PERCENT;
+if(defined($opts{'min-percent'})) {
+    $min_percent = $opts{'min-percent'};
+}
+
+my $seq_title = '';
+my @seq_lines = ();
+while(<>) {
+
+    s/^\s+|\s+$//g;
+
+    if(/^>/) {
+        if($seq_title) {
+            &filter($seq_title, \@seq_lines, $min_length, $min_content);
+        }
+        $seq_title = $_;
+        @seq_lines = ();
+    }
+    else {
+        push(@seq_lines, $_);
+    }
+}
+
+# don't forget the last one!
+if($seq_title) {
+    &filter($seq_title, \@seq_lines);
+}
+
+#
+#
+#
+sub filter {
+    my ($seq_title, $seq_lines, $min_length, $min_content) = @_;
+
+    my $seq             = '';
+    my $is_ambig        = 0;
+    my $is_empty        = 0;
+    my $is_min_length   = 1;
+    my $has_min_content = 1;
+    my $has_min_percent = 1;
+
+    # catenate if needed
+    if($min_length || $min_content || $min_percent) {
+        $seq = join("", @$seq_lines);
+    }
+
+    $is_ambig = &ambiguous($seq_lines);
+    $is_empty = &empty($seq_lines);
+    if($min_length) {
+        $is_min_length = (length($seq) >= $min_length) ? 1 : 0;
+    }
+    if($min_content) {
+        $has_min_content = &min_content($min_content, \$seq);
+    }
+    if($min_percent) {
+        $has_min_percent = &min_percent($min_percent, \$seq);
+    }
+
+    if(    !$is_ambig
+        && !$is_empty
+        && $is_min_length
+        && $has_min_content
+        && $has_min_percent) {
+
+        print "$seq_title\n";
+        print join("\n", @$seq_lines)."\n";
+    }
+    else {
+        print STDERR "$seq_title\n";
+        print STDERR join("\n", @$seq_lines)."\n";
+    }
+}
+
+#
+# Returns true if the sequence is all N's and X's, false otherwise.
+#
+sub ambiguous {
+    my ($seq_lines) = @_;
+
+    foreach (@$seq_lines) {
+        if(/[^NX]/) {
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
+#
+# Returns true if the sequence is empty, false otherwise.
+#
+sub empty {
+    my ($seq_lines) = @_;
+
+    if(!scalar(@$seq_lines)) {
+        return 0;
+    }
+
+    foreach (@$seq_lines) {
+        if(length($_) > 0) {
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
+#
+# Returns true if sequence contains at at least $min_content contiguous real
+# bases, false otherwise.
+#
+sub min_content {
+    my ($min_content, $seq) = @_;
+
+    if($$seq =~ /[ACGT]{$min_content}/) {
+        return 1;
+    }
+
+    return 0;
+}
+
+#
+#
+#
+sub min_percent {
+    my ($min_percent, $seq) = @_;
+
+    my $len = length($$seq);
+    my $count = 0;
+    while($$seq =~ /[ACGT]/gi) { $count++; }
+    my $percent = $count / $len * 100.0;
+
+    return $percent >= $min_percent;
+}

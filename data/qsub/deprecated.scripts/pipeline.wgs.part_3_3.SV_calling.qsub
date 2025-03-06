@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+
+#PBS -l walltime=12:0:0
+#PBS -l nodes=1:ppn=4
+#PBS -r n
+#PBS -j oe
+
+#PBS -W umask=002
+
+umask 002
+
+#-----------------------------------------------------#
+#                                                     #
+# INITIALIZE VARIABLES                                #
+#                                                     #
+#-----------------------------------------------------#
+if [[ -z $SAMPLE ]]; then echo "ERROR: you must supply SAMPLE variable as -v to qsub"; exit 42; fi
+if [[ -z $DIR ]]; then echo "ERROR: you must supply DIR variable as -v to qsub"; exit 42; fi
+if [[ -z $PIPELINE_HOME ]]; then echo "ERROR: you must supply PIPELINE_HOME variable as -v to qsub"; exit 42; fi
+if [[ -z $READ_LENGTH ]]; then echo "ERROR: you mush supply READ_LENGTH variable as -v to qsub"; exit 42; fi
+if [[ -z $DONE ]]; then echo "ERROR: you must supply DONE variable as -v to qsub"; exit 42; fi
+if [[ -z $SFS ]]; then export SFS=0; fi
+
+NAME=pipeline.wgs.part_3_3.SV_calling
+echo "****************************************"
+echo "* ${NAME}.qsub"
+echo "****************************************"
+echo "* SAMPLE:        $SAMPLE"
+echo "* DIR:           $DIR"
+echo "* PIPELINE_HOME: $PIPELINE_HOME"
+echo "* SFS            $SFS"
+echo "* VERBOSE        $VERBOSE"
+echo "* DONE:          $DONE"
+
+#-----------------------------------------------------#
+#                                                     #
+# START PIPELINE                                      #
+#                                                     #
+#-----------------------------------------------------#
+cd $DIR
+# INIT PIPELINE VARIABLES
+. $PIPELINE_HOME/data/templates/init_pipeline.sh $PIPELINE_HOME
+# DEFINING PIPELINE SPECIFIC VARIABLES
+# LOAD FUNCTION LIBRARY
+. $PIPELINE_HOME/data/templates/function.library
+# INIT THE SAMPLE
+set_verbose $VERBOSE
+sample_init $SAMPLE $DIR
+if [ $FUNCTION_LIBRARY_INIT -ne 1 ]; then echo "INIT SAMPLE PROBLEM"; exit 42; fi
+if [[ -z $BAMFILE ]]; then BAMFILE=$GATK_WGS_BAMFILE; fi
+echo "* BAMFILE:       $BAMFILE"
+if [[ ! $READ_LENGTH =~ ^[[:digit:]]+$ ]]; then echo "ERROR: READ_LENGTH must be a number"; exit 42; fi
+echo "* READ_LENGTH:   $READ_LENGTH"
+echo "****************************************"
+
+##############################################
+## FULL PIPELINE - WGS
+echo "*** STARTING STRUCTURAL VARIANT CALLING"
+##############################################
+cd $DIR
+
+donefile_popsv=.${SAMPLE}.${NAME}.SV_calling.popsv.done
+donefile_lumpy=.${SAMPLE}.${NAME}.SV_calling.lumpy.done
+
+#execute jobs
+if [[ $SFS -eq 1 || ! `find ./ -maxdepth 1 -name $DONE` ]]; then
+  if [[ $SFS -eq 1 || ! `find ./ -maxdepth 1 -name $donefile_popsv` ]]; then
+    if [ $VERBOSE ]; then echo "****** CMD: sample_genome_SV_calling_popsv  $BAMFILE"; fi
+    sample_genome_SV_calling_popsv $BAMFILE 2>&1 > ${SAMPLE}.SV_calling.popsv.out & process_popsv=${!}
+  fi
+  if [[ $SFS -eq 1 || ! `find ./ -maxdepth 1 -name $donefile_lumpy` ]]; then
+    if [ $VERBOSE ]; then echo "****** CMD: sample_genome_SV_calling_lumpy $BAMFILE $READ_LENGTH"; fi
+    sample_genome_SV_calling_lumpy $BAMFILE $READ_LENGTH 2>&1 > ${SAMPLE}.SV_calling.lumpy.out & process_lumpy=${!}
+  fi
+
+#monitor job progress, output error messages or donefiles when complete
+  unset failure
+  run=SV_calling_popsv
+  if [ $process_popsv ]; then
+    wait $process_popsv; status=$?
+    if [ $VERBOSE ]; then echo "run=$run"; echo "proces id: $process_popsv"; echo "exit status: $status"; echo "donefile: $donefile_popsv"; fi
+    if [ $status -eq 0 ]; then echo sub-run $run SUCCESS; touch $donefile_popsv; else echo "*** $run run failed"; failure=1; fi
+  else
+    echo "SKIPPED sub-run $run"
+  fi
+
+  run=SV_calling_lumpy
+  if [ $process_lumpy ]; then
+    wait $process_lumpy; status=$?
+    if [ $VERBOSE ]; then echo "run=$run"; echo "proces id: $process_lumpy"; echo "exit status: $status"; echo "donefile: $donefile_lumpy"; fi
+    if [ $status -eq 0 ]; then echo sub-run $run SUCCESS; touch $donefile_lumpy; else echo "*** $run run failed"; failure=1; fi
+  else
+    echo "SKIPPED sub-run $run"
+  fi
+ 
+  if [ $failure ]; then exit 42; else touch $DONE; if [ $VERBOSE ]; then echo SUCCESS; fi; fi
+else
+  if [ $VERBOSE ]; then echo "****** SKIP structural variant calling"; fi
+fi

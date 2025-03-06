@@ -1,0 +1,65 @@
+#! /usr/bin/perl -w
+#
+# $Id: fasta-flatten,v 1.2 2006/05/24 23:35:50 cmhall Exp $
+#
+# Charles Hall <cmhall@hawaii.edu>
+#
+# Read a fasta file from stdin and print it to stdout with all newlines
+# removed from sequences.
+#
+# example:
+#
+#  > ./fasta-flatten < reads.fasta > flat.fasta
+
+use strict;
+use Env qw(CMHTOOLS);
+use lib "$CMHTOOLS/lib";
+use Getopt::Mixed;
+
+$| = 1;
+
+my $usage = <<END;
+usage: $0
+    [--help]
+    [--type={seq|qual}]
+
+--help
+    Print this help message.
+
+--type={seq|qual}
+    Type of file, sequence data or quality values.
+
+END
+
+Getopt::Mixed::init(
+    "help",
+    "type=s",
+);
+my %opts = ();
+while((my $option, my $value) = Getopt::Mixed::nextOption()) {
+    $opts{$option} = defined($value) ? $value : 1;
+}
+Getopt::Mixed::cleanup();
+
+if(defined($opts{'help'})) {
+    print "$usage\n";
+    exit;
+}
+
+my $type = $opts{'type'} || '';;
+
+if(!$type) {
+    print STDERR "--type is a required option\n";
+    exit 1;
+}
+
+if($type ne "seq" && $type ne "qual") {
+    print STDERR "--type can only be 'seq' or 'qual'\n";
+    exit 1;
+}
+
+open OUT, "|$CMHTOOLS/bin/fasta-format --type=$type --width=0";
+while(<>){
+    print OUT;
+}
+close OUT;

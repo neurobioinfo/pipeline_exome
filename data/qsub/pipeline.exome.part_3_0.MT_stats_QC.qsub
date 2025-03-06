@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+
+#PBS -l walltime=168:0:0
+#PBS -r n
+#PBS -j oe
+#PBS -W umask=002
+
+umask 002
+
+#-----------------------------------------------------#
+#                                                     #
+# INITIALIZE VARIABLES                                #
+#                                                     #
+#-----------------------------------------------------#
+if [[ -z $SAMPLE ]]; then echo "ERROR: you must supply SAMPLE variable as -v to qsub"; exit 42; fi
+if [[ -z $DIR ]]; then echo "ERROR: you must supply DIR variable as -v to qsub"; exit 42; fi
+if [[ -z $THREADS ]]; then echo "ERROR: you must supply THREADS variable as -v to qsub"; exit 42; fi
+#if [[ -z $MAX_MEM ]]; then echo "ERROR: you must supply MiAX_MEM variable as -v to qsub"; exit 42; fi
+if [[ -z $PIPELINE_HOME ]]; then echo "ERROR: you must supply PIPELINE_HOME variable as -v to qsub"; exit 42; fi
+#if [[ -z $CAPTURE_KIT ]]; then echo "ERROR: you must supply CAPTURE_KIT variable as -v to qsub"; exit 42; fi
+#if [[ -z $RAW_FASTQ ]]; then echo "ERROR: you must supply RAW_FASTQ variable as -v to qsub"; exit 42; fi
+if [[ -z $DONE ]]; then echo "ERROR: you must supply DONE variable as -v to qsub"; exit 42; fi
+if [[ -z $SFS ]]; then export SFS=0; fi
+
+NAME=pipeline.exome.part_3_0.MT_stats_QC
+echo "********************************************"
+echo "* $NAME.qsub *"
+echo "********************************************"
+echo "* SAMPLE:        $SAMPLE"
+echo "* DIR:           $DIR"
+echo "* THREADS:       $THREADS"
+#echo "* MAX_MEM:       $MAX_MEM"
+echo "* PIPELINE_HOME: $PIPELINE_HOME"
+#echo "* CAPTURE_KIT:   $CAPTURE_KIT"
+#echo "* RAW_FASTQ:     $RAW_FASTQ"
+echo "* SFS            $SFS"
+echo "* VERBOSE        $VERBOSE"
+echo "* DONE:          $DONE"
+
+#-----------------------------------------------------#
+#                                                     #
+# START PIPELINE                                      #
+#                                                     #
+#-----------------------------------------------------#
+cd $DIR
+# INIT PIPELINE VARIABLES
+. $PIPELINE_HOME/data/templates/init_pipeline.sh $PIPELINE_HOME
+# DEFINING PIPELINE SPECIFIC VARIABLES
+# LOAD FUNCTION LIBRARY
+. $PIPELINE_HOME/data/templates/function.library
+# INIT THE SAMPLE
+set_verbose $VERBOSE
+sample_init $SAMPLE $DIR
+if [ $FUNCTION_LIBRARY_INIT -ne 1 ]; then echo "INIT SAMPLE PROBLEM"; exit 42; fi
+#if   [ $CAPTURE_KIT == "SS38" ];       then export BED=$BED38;       export BED_FLANK=$BED38_FLANK
+#elif [ $CAPTURE_KIT == "SS50" ];       then export BED=$BED50;       export BED_FLANK=$BED50_FLANK
+#elif [ $CAPTURE_KIT == "SSV4" ];       then export BED=$BEDV4;       export BED_FLANK=$BEDV4_FLANK
+#elif [ $CAPTURE_KIT == "SSV5" ];       then export BED=$BEDV5;       export BED_FLANK=$BEDV5_FLANK
+#elif [ $CAPTURE_KIT == "SSV5C" ];      then export BED=$BEDV5CLINIC; export BED_FLANK=$BEDV5CLINIC_FLANK
+#elif [ $CAPTURE_KIT == "TruSeq" ];     then export BED=$BEDTS;       export BED_FLANK=$BEDTS_FLANK
+#elif [ $CAPTURE_KIT == "NGv3" ];       then export BED=$BEDNGv3;     export BED_FLANK=$BEDNGv3_FLANK
+#elif [ $CAPTURE_KIT == "NGvCRome" ];   then export BED=$BEDNGvCRome; export BED_FLANK=$BEDNGvCRome_FLANK
+#elif [ $CAPTURE_KIT == "CCDS"];        then export BED=$BEDCCDS;     export BED_FLANK=$BEDCCDS_FLANK
+#fi
+#echo "* BED:           $BED"
+#echo "* BED_FLANK:     $BED_FLANK"
+echo "****************************************"
+
+##########################################
+echo "*** STARTING MT STATS AND QC"
+##########################################
+cd $DIR
+
+## METRICS
+if [[ $SFS -eq 1 || ! `find ./ -maxdepth 1 -name "$DONE"` ]]; then
+  if [ $VERBOSE ]; then echo "****** CMD: sample_metrics_DepthOfCoverage $REF_MT $GATK_BAMFILE_MT_FILTERED $SAMPLE.MT"; fi
+  sample_metrics_DepthOfCoverage $REF_MT $GATK_BAMFILE_MT_FILTERED ${SAMPLE}.MT 2>&1 > ${SAMPLE}.${NAME}.DofC_MT.out
+  if [ $? -eq 0 ]; then 
+    touch $DONE;
+    if [ $VERBOSE ]; then echo SUCCESS; fi;  
+  else exit 42; fi
+fi

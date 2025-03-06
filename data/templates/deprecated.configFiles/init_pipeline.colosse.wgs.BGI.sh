@@ -1,0 +1,11 @@
+export WALLTIME=48:0:0
+export SFS=0
+export KEEP_INTERMEDIATES=0
+export MAX_MEM=23
+export THREADS=8
+export CENTER=BGI
+export QUEUE=msub
+export CAPTURE_KIT=SSV4
+export ACCOUNT=ish-284-ad
+export FASTQ1_PATTERN=Clean_1
+export FASTQ2_PATTERN=Clean_2

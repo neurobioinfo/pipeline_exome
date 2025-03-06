@@ -1,0 +1,6 @@
+cmhtools depends on the presence of an environment variable, CMHTOOLS, whose
+value is the location of the toplevel directory of cmhtools.  It needs this
+environment to find the libraries.  If the cmhtools is in your home directory,
+the following will work:
+in bash or sh:  > export CMHTOOLS=~/cmhtools
+in csh or tcsh: > setenv CMHTOOLS ~/cmhtools

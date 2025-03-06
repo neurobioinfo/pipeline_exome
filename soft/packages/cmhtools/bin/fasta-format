@@ -1,0 +1,100 @@
+#! /usr/bin/perl -w
+#
+# $Id: fasta-format,v 1.2 2006/05/24 23:35:50 cmhall Exp $
+#
+# Charles Hall <cmhall@hawaii.edu>
+#
+# Read a fasta file from stdin and print it to stdout with original title
+# lines and lines of sequences wrapped to a width specified by the --width
+# option.
+#
+# example:
+#
+#  > ./fasta-format --width=80 < reads.fasta > reads2.fasta
+
+use strict;
+use Env qw(CMHTOOLS);
+use lib "$CMHTOOLS/lib";
+use Getopt::Mixed;
+use DnaFasta;
+use QualFasta;
+
+#defaults
+my $DEFAULT_WIDTH_DNA  = 70;
+my $DEFAULT_WIDTH_QUAL = 60;
+my $DEFAULT_FILE       = '';
+my $DEFAULT_SORT       = '';
+
+$| = 1;
+
+my $usage = <<END;
+usage: $0
+    [--help]
+    [--width=<width>]
+    [--type={seq|qual}]
+    [--sort]
+
+--help
+    Print this help message.
+
+--width=<width>
+    Wrap sequence lines to <width>.  If <width> is 0, the entire sequence will
+    be printed on one line.
+
+--type={seq|qual}
+    Specify the type of data the sequence contains; either 'seq' or 'qual'.
+
+--sort
+    Sort sequences by title.
+
+END
+
+Getopt::Mixed::init(
+    "help",
+    "width=i",
+    "type=s",
+    "sort",
+);
+my %opts = ();
+while((my $option, my $value) = Getopt::Mixed::nextOption()) {
+    $opts{$option} = defined($value) ? $value : 1;
+}
+Getopt::Mixed::cleanup();
+
+if(defined($opts{'help'})) {
+    print "$usage\n";
+    exit;
+}
+
+my $sort = $DEFAULT_SORT;
+if(defined($opts{'sort'})) {
+    $sort = $opts{'sort'};
+}
+
+my $type = $opts{'type'} || '';
+
+if(!$type) {
+    print STDERR "--type={seq|qual} is a required option\n";
+    exit 1;
+}
+if($type ne "seq" && $type ne "qual") {
+    print STDERR "--type can only be 'seq' or 'qual'\n";
+    exit 1;
+}
+
+my $defwidth = $type eq "seq" ? $DEFAULT_WIDTH_DNA : $DEFAULT_WIDTH_QUAL;
+my $width = defined($opts{'width'}) ? $opts{'width'} : $defwidth;
+my $file = $ARGV[0] || $DEFAULT_FILE;
+
+my $fasta = '';
+if($type eq "seq") {
+    $fasta = new DnaFasta($file);
+}
+elsif($type eq "qual") {
+    $fasta = new QualFasta($file);
+}
+else {
+    die "$type is not a type of sequence";
+}
+
+$fasta->print($width, $sort);

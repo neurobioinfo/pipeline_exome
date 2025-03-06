@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+
+#PBS -l walltime=168:0:0
+#PBS -r n
+#PBS -j oe
+#PBS -W umask=002
+
+umask 002
+
+#-----------------------------------------------------#
+#                                                     #
+# INITIALIZE VARIABLES                                #
+#                                                     #
+#-----------------------------------------------------#
+if [[ -z $SAMPLE ]]; then echo "ERROR: you must supply SAMPLE variable as -v to qsub"; exit 42; fi
+if [[ -z $DIR ]]; then echo "ERROR: you must supply DIR variable as -v to qsub"; exit 42; fi
+if [[ -z $THREADS ]]; then echo "ERROR: you must supply THREADS variable as -v to qsub"; exit 42; fi
+#if [[ -z $MAX_MEM ]]; then echo "ERROR: you must supply MiAX_MEM variable as -v to qsub"; exit 42; fi
+if [[ -z $PIPELINE_HOME ]]; then echo "ERROR: you must supply PIPELINE_HOME variable as -v to qsub"; exit 42; fi
+if [[ -z $FASTQ1 ]]; then echo "ERROR: you must supply FASTQ variable as -v to qsub"; exit 42; fi
+if [[ -z $FASTQ2 ]]; then echo "ERROR: you must supply FASTQ variable as -v to qsub"; exit 42; fi
+if [[ -z $SAM ]]; then echo "ERROR: you must supply SAM variable as -v to qsub"; exit 42; fi
+if [[ -z $RUN ]]; then echo "ERROR: you must supply RUN variable as -v to qsub"; exit 42; fi
+if [[ -z $GENOME ]]; then echo "ERROR: you must supply REFERENCE variable as -v to qsub"; exit 42; fi
+if [[ -z $DONE ]]; then echo "ERROR: you must supply DONE variable as -v to qsub"; exit 42; fi
+if [[ -z $SFS ]]; then export SFS=0; fi
+if [[ -z $LIB ]]; then export LIB=LIB1; else export LIBRARY; fi
+
+echo "**************************************************"
+echo "* pipeline.exome.part_1_3.aln_samse.in_fastq.qsub"
+echo "**************************************************"
+echo "* SAMPLE:        $SAMPLE"
+echo "* DIR:           $DIR"
+echo "* THREADS:       $THREADS"
+#echo "* MAX_MEM:       $MAX_MEM"
+echo "* PIPELINE_HOME: $PIPELINE_HOME"
+echo "* FASTQ1:        $FASTQ1"
+echo "* FASTQ2:        $FASTQ2"
+echo "* SAM:           $SAM"
+echo "* RUN:           $RUN"
+echo "* LIB:           $LIB"
+echo "* GENOME:        $GENOME"
+echo "* SFS            $SFS"
+echo "* VERBOSE        $VERBOSE"
+echo "* DONE:          $DONE"
+echo "**************************************************"
+
+#-----------------------------------------------------#
+#                                                     #
+# START PIPELINE                                      #
+#                                                     #
+#-----------------------------------------------------#
+cd $DIR
+# INIT PIPELINE VARIABLES
+. $PIPELINE_HOME/data/templates/init_pipeline.sh $PIPELINE_HOME
+# DEFINING PIPELINE SPECIFIC VARIABLES
+# LOAD FUNCTION LIBRARY
+. $PIPELINE_HOME/data/templates/function.library
+# INIT THE SAMPLE
+set_verbose $VERBOSE
+sample_init $SAMPLE $DIR
+if [ $FUNCTION_LIBRARY_INIT -ne 1 ]; then echo "INIT SAMPLE PROBLEM"; exit 42; fi
+if [[ $GENOME == "v37" ]]; then REFERENCE=$REF
+elif [[ $GENOME == "MT" ]]; then REFERENCE=$REF_MT
+else echo "Unkown GENOME to use in alignment: \"$GENOME\""; exit 42; fi
+
+##########################################
+## FULL PIPELINE - EXOME
+echo "*** STARTING BWA ALN"
+##########################################
+cd $DIR
+
+## Combine fastqs
+FASTQ_COMBINED=${SAMPLE}.${RUN}.unpaired.fastq.gz
+SAI_COMBINED=${SAMPLE}.${RUN}.unpaired.fastq.gz.sai
+if [ $VERBOSE ]; then echo "****** CMD: zcat $FASTQ1 $FASTQ2 \| gzip -c \> $FASTQ_COMBINED"; fi
+zcat $FASTQ1 $FASTQ2 | gzip -c > $FASTQ_COMBINED
+if [ $? -eq 0 ]; then
+  if [ $VERBOSE ]; then echo SUCCESS; fi;
+else echo "*** Error in zcat";  
+  exit 42;
+fi
+
+## BWA ALN
+if [ $VERBOSE ]; then echo "****** CMD: sample_BWA_align_strand $FASTQ_COMBINED $SAI_COMBINED $THREADS $REFERENCE 0"; fi
+sample_BWA_align_strand $FASTQ_COMBINED $SAI_COMBINED $THREADS $REFERENCE 0
+if [ $? -eq 0 ]; then 
+  if [ $VERBOSE ]; then echo SUCCESS; fi; 
+else echo "*** Error in sample_BWA_align_strand $FASTQ_COMBINED"; 
+  exit 42; 
+fi
+## BWA SAMSE
+if [ $VERBOSE ]; then
+  echo "****** CMD: sample_BWA_alignPE $FASTQ1 $FASTQ2 $SAM $THREADS $REFERENCE @RG"\\t"ID:${RUN}"\\t"PL:illumina"\\t"PU:${RUN}_PU"\\t"LB:${LIB}"\\t"SM:${SAMPLE}"\\t"CN:${CENTER}";
+fi
+sample_BWA_alignSE $FASTQ_COMBINED $SAI_COMBINED $SAM $THREADS $REFERENCE @RG"\t"ID:${LIB}-${RUN}"\t"PL:illumina"\t"PU:${RUN}_PU"\t"LB:${LIB}"\t"SM:${SAMPLE}"\t"CN:${CENTER}
+if [ $? -eq 0 ]; then
+  if [[ $KEEP_INTERMEDIATES -eq 0 ]]; then rm -vf $FASTQ_COMBINED $SAI_COMBINED; fi 
+  touch $DONE;
+  if [ $VERBOSE ]; then echo SUCCESS; fi;
+else echo "*** Problem in sample_BWA_alignSE"; exit 42; fi

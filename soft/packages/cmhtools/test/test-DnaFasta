@@ -1,0 +1,12 @@
+#! /usr/local/bin/perl -w
+
+use strict;
+use diagnostics;
+use Env qw(CMHTOOLS);
+use lib "$CMHTOOLS/lib";
+use DnaFasta;
+
+my $width = 70;
+
+my $f = new DnaFasta($ARGV[0]);
+$f->print($width);

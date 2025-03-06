@@ -1,0 +1,10 @@
+export WALLTIME=48:0:0
+export SFS=0
+export KEEP_INTERMEDIATES=0
+export MAX_MEM=23
+export THREADS=12
+export CENTER=ADNI
+#export QUEUE=qsub
+export QUEUE=$PIPELINE_HOME/soft/src/queueInterpreter/QueueInterpreter
+export ACCOUNT=ish-284-ac
+export ADAPTERS=$PIPELINE_HOME/data/templates/Adapters.ALL.fasta

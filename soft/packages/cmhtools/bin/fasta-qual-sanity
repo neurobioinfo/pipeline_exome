@@ -1,0 +1,122 @@
+#! /usr/bin/perl -w
+#
+# $Id: fasta-qual-sanity,v 1.3 2006/05/24 23:35:50 cmhall Exp $
+#
+# Charles Hall <cmhall@hawaii.edu>
+#
+# Checks the sanity of a *.qual file.  Essentially, that there is a qual value
+# for each base pair.
+#
+# example:
+#
+#  > fasta-qual-sanity --seq=fasta/p8k.fasta --qual=qual/p8k.qual 
+#  quality file is sane
+
+use strict;
+use Env qw(CMHTOOLS);
+use lib "$CMHTOOLS/lib";
+use Getopt::Mixed;
+use DnaFasta;
+use QualFasta;
+
+#defaults
+my $DEFAULT_SEQ_FILE  = '';
+my $DEFAULT_QUAL_FILE = '';
+
+$| = 1;
+
+my $usage = <<END;
+usage: $0
+    [--help]
+    --seq=<seq-file>
+    --qual=<qual-file>
+
+--help
+    Print this help message.
+
+--seq=<seq-file>
+    The sequence file.
+
+--qual=<qual-file>
+    The quality file.
+
+END
+
+Getopt::Mixed::init(
+    "help",
+    "seq=s",
+    "qual=s",
+);
+my %opts = ();
+while((my $option, my $value) = Getopt::Mixed::nextOption()) {
+    $opts{$option} = defined($value) ? $value : 1;
+}
+Getopt::Mixed::cleanup();
+
+if(defined($opts{'help'})) {
+    print "$usage\n";
+    exit;
+}
+
+my $seq_file  = $opts{'seq'}  || $DEFAULT_SEQ_FILE;
+my $qual_file = $opts{'qual'} || $DEFAULT_QUAL_FILE;
+
+# check that both --seq and --qual were given.
+if(!$seq_file || !$qual_file) {
+    die "--seq and --qual are required parameters";
+}
+
+my $sf = new DnaFasta($seq_file);
+my $qf = new QualFasta($qual_file);
+
+my @seqs = $sf->get_seqs();
+my @quals = $qf->get_seqs();
+
+my $sane = 1;
+
+my $seq_count = scalar(@seqs);
+my $qual_count = scalar(@quals);
+
+my %titles = ();
+
+if($seq_count != $qual_count) {
+    $sane = 0;
+    printf STDERR "error: seq and qual do not have the same number of sequences\n".
+                  "    seq:  %06d\n".
+                  "    qual: %06d\n", $seq_count, $qual_count;
+}
+
+for(my $i=0; $i<$seq_count; $i++) {
+    my $s = $seqs[$i];
+    my $q = $quals[$i];
+
+    my $st = $s->get_title_leftmost();
+    my $qt = $q->get_title_leftmost();
+
+    if($st ne $qt) {
+        $sane = 0;
+        print STDERR "error: title mismatch:\n".
+        "    $st\n".
+        "    $qt\n";
+    }
+    else {
+        if($s->length() != $q->length()) {
+            $sane = 0;
+            print STDERR "error: qual error: $st\n";
+        }
+
+        if($titles{$st}) {
+            print STDERR "error: duplicate title: $st\n";
+        }
+        else {
+            $titles{$st} = 1;
+        }
+    }
+}
+
+if($sane) {
+    print "quality file is sane\n";
+}
+else {
+    print "quality file is NOT sane!!!\n";
+}

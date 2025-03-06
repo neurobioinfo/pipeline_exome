@@ -1,0 +1,99 @@
+#! /usr/bin/perl -w
+#
+# $Id: fasta-strip-seqs,v 1.2 2006/05/24 23:35:50 cmhall Exp $
+#
+# Charles Hall <cmhall@hawaii.edu>
+#
+# Strip a list of sequences from a fasta file.
+#
+# example:
+#
+#  > fasta-strip-seqs --list=remove.list < orig.fasta > stripped.fasta
+
+use strict;
+
+use Getopt::Mixed;
+
+my $DEFAULT_LIST_FILE = '';
+
+$| = 1;
+
+my $usage = <<END;
+usage: $0
+    [--help]
+    [--list=<list>]
+
+--help
+    Print this help message.
+
+--list=<list>
+    File containing list of names of sequences, one per line, to strip from
+    fasta file read from stdin.  The whole title line does not have to match
+    exactly, only part of it.  So make sure each name in <list> is enough to
+    be unique.  The fasta file, with sequences in <list> stripped out, is
+    printed to stdout.  Stripped sequences are printed to stderr.
+
+END
+
+Getopt::Mixed::init(
+    "help",
+    "list=s",
+);
+my %opts = ();
+while((my $option, my $value) = Getopt::Mixed::nextOption()) {
+    $opts{$option} = defined($value) ? $value : 1;
+}
+Getopt::Mixed::cleanup();
+
+if(defined($opts{'help'})) {
+    print "$usage\n";
+    exit;
+}
+
+my $list_file = $DEFAULT_LIST_FILE;
+if(defined($opts{'list'})) {
+        $list_file = $opts{'list'};
+}
+
+my %list = ();
+if($list_file) {
+    open IN, $list_file or die "failed to open $list_file";
+    while(<IN>) {
+        s/^\s+|\s$//g;
+        if($_) {
+            $list{$_} = 1;
+        }
+    }
+    close(IN);
+}
+
+my $title = '';
+my $strip = 0;
+while(<>) {
+    s/^\s+|\s+$//g;
+
+    if(/^>([^\s]+)/) {
+        $strip = &list_match($1, \%list);
+    }
+
+    if(!$strip) {
+        print "$_\n";
+    }
+    else {
+        print STDERR "$_\n";
+    }
+}
+
+#
+# Returns true if any keys of %$list match $title.
+#
+sub list_match {
+    my ($title, $list) = @_;
+
+    if(defined($$list{$title})) {
+        return 1;
+    }
+
+    return 0;
+}
+

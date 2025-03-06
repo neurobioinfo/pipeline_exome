@@ -1,0 +1,28 @@
+#! /usr/local/bin/perl -w
+
+use strict;
+use diagnostics;
+use Env qw(CMHTOOLS);
+use lib "$CMHTOOLS/lib";
+use Util;
+
+my $s = "abcdefghijklmnopqrstuvwxyzaasdfasdfasdfasdfasdfasdjfsdfjalsdjflasdjfajsdlf";
+print "\n";
+print "wrap(5)\n";
+print "before: $s\n";
+&Util::wrap(\$s, 5);
+print "after:\n$s\n";
+
+$s = "             dasdasdf              ";
+print "\n";
+print "trim()\n";
+print "before: |$s|\n";
+&Util::trim(\$s);
+print "after: |$s|\n";
+
+$s = "    a       b       c       d      e     ";
+print "\n";
+print "shrink_white_space()\n";
+print "before: |$s|\n";
+&Util::shrink_white_space(\$s);
+print "after: |$s|\n";

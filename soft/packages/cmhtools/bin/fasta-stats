@@ -1,0 +1,125 @@
+#! /usr/bin/perl -w
+#
+# $Id: fasta-stats,v 1.2 2006/05/24 23:35:50 cmhall Exp $
+#
+# Charles Hall <cmhall@hawaii.edu>
+#
+# Print statistics about reads in a fasta file to stdout.
+#
+# example:
+#
+#  > fasta-stats < fasta > stats 
+
+use strict;
+
+use Getopt::Mixed;
+
+$| = 1;
+
+my $usage = <<END;
+usage: $0
+    [--help]
+
+--help
+    Print this help message.
+
+END
+
+Getopt::Mixed::init(
+    "help",
+);
+my %opts = ();
+while((my $option, my $value) = Getopt::Mixed::nextOption()) {
+    $opts{$option} = defined($value) ? $value : 1;
+}
+Getopt::Mixed::cleanup();
+
+if(defined($opts{'help'})) {
+    print "$usage\n";
+    exit;
+}
+
+my %stats = ();
+my %total_by_len = ();
+my $count = 0;
+my $total_len = 0;
+
+for(my $i=5; $i<=100; $i+=5) {
+    for(my $j=100; $j<=1500; $j+=100) {
+        $stats{$i}{$j} = 0;
+        $total_by_len{$j} = 0;
+    }
+}
+
+my $seq_title = '';
+my @seq_lines = ();
+while(<>) {
+
+    s/^\s+|\s+$//g;
+
+    if(/^>/) {
+        if($seq_title) {
+            $count++;
+            &update_stats(\@seq_lines, \%stats);
+        }
+        $seq_title = $_;
+        @seq_lines = ();
+    }
+    else {
+        push(@seq_lines, $_);
+    }
+}
+
+# don't forget the last one!
+if($seq_title) {
+    $count++;
+    &update_stats(\@seq_lines, \%stats);
+}
+
+# print out stats
+my $grand_total_by_percent = 0;
+foreach my $k1 (sort {$a <=> $b} keys(%stats)) {
+    my $total_by_percent = 0;
+    foreach my $k2 (sort {$a <=> $b} keys(%{$stats{$k1}})) {
+        $total_by_percent += $stats{$k1}{$k2};
+        $grand_total_by_percent += $stats{$k1}{$k2};
+        $total_by_len{$k2} += $stats{$k1}{$k2};
+    }
+}
+#totals by len
+my $grand_total_by_len = 0;
+foreach my $k1 (sort {$a <=> $b} keys(%total_by_len)) {
+    printf "%5dbp %10d\n", $k1, $total_by_len{$k1};
+    $grand_total_by_len += $total_by_len{$k1};
+}
+my $avg = 0;
+if($grand_total_by_len != 0) {
+    $avg = $total_len / $grand_total_by_len;
+}
+printf "\ntotal   %10d\n", $grand_total_by_len;
+printf "avg len    %10.2f\n", $avg;
+
+if($grand_total_by_len != $grand_total_by_percent) {
+    print STDERR "uh-ohh, grand_total_by_len != grand_total_by_percent\n";
+}
+
+#
+#
+#
+sub update_stats {
+    my ($seq_lines, $stats) = @_;
+
+    my $seq = join("", @$seq_lines);
+    my $len = length($seq);
+    $total_len += $len;
+    my $len2 = int(($len + 100) - (($len + 100)%100));
+    my $count = 0;
+    while($seq =~ /[ACGT]/gi) { $count++; }
+    if($len == 0) { $len = 0.0001; }
+    my $percent = $count / $len * 100.0;
+    my $percent2 = int(($percent + 5) - (($percent + 5)%5));
+    if($percent2 < 0) { $percent2 = 0; }
+    if($percent2 > 100) { $percent2 = 100; }
+
+    $stats{$percent2}{$len2}++;
+}

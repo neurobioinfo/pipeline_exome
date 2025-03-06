@@ -1,0 +1,267 @@
+#! /usr/local/bin/perl -w
+#
+# $Id: gen-reads,v 1.4 2006/05/24 23:35:50 cmhall Exp $
+#
+# Charles Hall <cmhall@hawaii.edu>
+#
+# Simulate shotgun reading.
+#
+# example:
+#
+#  > gen-reads --nrp=2000 --insert=3000 --std=300 < e_coli.fasta 
+
+use strict;
+
+use Getopt::Mixed;
+
+$| = 1;
+
+my $DEFAULT_NUM_READ_PAIRS  = 20000;
+my $DEFAULT_INSERT_LEN      = 3000;
+my $DEFAULT_STD             = 300;
+
+my $WELLS_PER_PLATE         = 384;
+my $MAX_READ_LEN            = 1000;
+my $MIN_READ_LEN            = 400;
+my $LINE_LEN                = 70;
+my $FASTA_NAME              = "reads.fasta";
+my $QUAL_NAME               = "reads.qual";
+
+my $usage = <<END;
+usage: $0
+    [--help]
+    [--nrp=<number of read pairs>]
+    [--insert=<insert length>]
+    [--std=<standard deviation>]
+
+--help
+    Print this help message.
+
+--nrp=<number of read pairs>
+    number of read pairs to generate.
+
+--insert=<insert length>]
+    length of insert to generate reads for.
+
+--std=<standard deviation>]
+    standard deviation of insert length.
+
+END
+
+Getopt::Mixed::init(
+    "help",
+    "nrp=i",
+    "insert=i",
+    "std=i",
+);
+my %opts = ();
+while((my $option, my $value) = Getopt::Mixed::nextOption()) {
+    $opts{$option} = defined($value) ? $value : 1;
+}
+Getopt::Mixed::cleanup();
+
+if(defined($opts{'help'})) {
+    print "$usage\n";
+    exit;
+}
+
+my $num_read_pairs = $DEFAULT_NUM_READ_PAIRS;
+if(defined($opts{'nrp'})) {
+    $num_read_pairs = $opts{'nrp'};
+}
+
+my $insert_len = $DEFAULT_INSERT_LEN;
+if(defined($opts{'insert'})) {
+    $insert_len = $opts{'insert'};
+}
+
+my $std = $DEFAULT_STD;
+if(defined($opts{'std'})) {
+    $std = $opts{'std'};
+}
+
+my $genome = '';
+
+while(<>) {
+    /^>/ && next;
+
+    s/\r+/\n/g;
+    s/^\s+|\s+$//g;
+
+    if(/[^acgtxn\s]+/i) {
+        print STDERR "found strange character: $_\n";
+    }
+
+    $genome .= uc($_);
+}
+
+my $genome_len = length($genome);
+
+#my $read_id = 'P3K-30000-A01';
+my $size = int($insert_len / 1000);
+my $read_id = "P$size"."K-$size"."0000-A01";
+
+open FASTA, ">$FASTA_NAME" or die "failed to create $FASTA_NAME";
+open QUAL,  ">$QUAL_NAME"  or die "failed to create $QUAL_NAME";
+
+foreach (1..$num_read_pairs) {
+    my $insert = '';
+    my $fwd = '';
+    my $rev = '';
+
+    my $fwd_read_title = "$read_id.F";
+    my $rev_read_title = "$read_id.R";
+
+    $insert = &select_random_insert(\$genome, $insert_len, $std);
+    $fwd = &read_fwd($insert, $MIN_READ_LEN, $MAX_READ_LEN);
+    $rev = &read_rev($insert, $MIN_READ_LEN, $MAX_READ_LEN);
+
+    $read_id = &next_read_id($read_id);
+
+    print FASTA ">$fwd_read_title\n";
+    print QUAL  ">$fwd_read_title\n";
+    my $seg = '';
+    my $index = 0;
+    my $fwd_len = length($fwd);
+    while($seg = substr($fwd, $index, $LINE_LEN)) {
+        my $seglen = length($seg);
+        print FASTA "$seg\n";
+        print QUAL  &rand_qual($seglen)."\n";
+        $index += $LINE_LEN;
+        if($index + 1 > $fwd_len) { last; }
+    }
+    print FASTA ">$rev_read_title\n";
+    print QUAL  ">$rev_read_title\n";
+    $seg = '';
+    $index = 0;
+    my $rev_len = length($rev);
+    while($seg = substr($rev, $index, $LINE_LEN)) {
+        my $seglen = length($seg);
+        print FASTA "$seg\n";
+        print QUAL  &rand_qual($seglen)."\n";
+        $index += $LINE_LEN;
+        if($index + 1 > $rev_len) { last; }
+    }
+}
+
+close FASTA;
+close QUAL;
+
+#
+#
+#
+sub select_random_insert {
+    my ($genome, $il, $sd) = @_;
+
+    my $pm = int(rand(2));
+    my $dev = int(rand($sd));
+    if($pm) {
+        $il += $dev;
+    }
+    else {
+        $il -= $dev;
+    }
+
+    my $index = int(rand(length($$genome)));
+
+    return substr($$genome, $index, $il);
+}
+
+#
+#
+#
+sub read_fwd {
+    my ($insert, $min, $max) = @_;
+
+    my $len = int(rand($max-$min)) + $min;
+
+    return substr($insert, 0, $len);
+}
+
+#
+#
+#
+sub read_rev {
+    my ($insert, $min, $max) = @_;
+
+    my $rev_comp = &reverse_complement($insert);
+
+    my $len = int(rand($max-$min)) + $min;
+
+    return substr($rev_comp, 0, $len);
+}
+
+#
+#
+#
+sub next_read_id {
+    my ($id) = @_;
+
+    #$id =~ /^P3K-3(\d)(\d)(\d)(\d)-([A-P])(\d)(\d)/;
+    $id =~ /^P\dK-\d(\d)(\d)(\d)(\d)-([A-P])(\d)(\d)/;
+
+    my $plate = $1*1000+$2*100+$3*10+$4;
+    my $wl = $5;
+    my $wn = $6*10+$7;
+
+    my %next_wl = (
+        'A'=>'B',
+        'B'=>'C',
+        'C'=>'D',
+        'D'=>'E',
+        'E'=>'F',
+        'F'=>'G',
+        'G'=>'H',
+        'H'=>'I',
+        'I'=>'J',
+        'J'=>'K',
+        'K'=>'L',
+        'L'=>'M',
+        'M'=>'N',
+        'N'=>'O',
+        'O'=>'P',
+        'P'=>'A',
+    );
+
+    $wn++;
+
+    if($wn > 24) {
+        $wn = 1;
+        $wl = $next_wl{$wl};
+        if($wl eq "A") {
+            $plate++;
+        }
+    }
+
+    #return sprintf("P3K-3%04d-%s%02d", $plate, $wl, $wn);
+    return sprintf("P%dK-%d%04d-%s%02d", $size, $size, $plate, $wl, $wn);
+}
+
+#
+#
+#
+sub reverse_complement {
+    my ($seq) = @_;
+
+    my $rev = reverse($seq);
+
+    $rev =~ tr/ACGT/TGCA/;
+
+    return $rev;
+}
+
+#
+#
+#
+sub rand_qual {
+    my ($len) = @_;
+
+    my $qual = int(rand(45)) + 20;
+    foreach (2..$len) {
+        my $qv = int(rand(45)) + 20;
+        $qual .= " $qv";
+    }
+
+    return $qual;
+}
+

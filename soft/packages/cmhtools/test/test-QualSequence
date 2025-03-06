@@ -1,0 +1,11 @@
+#! /usr/local/bin/perl -w
+
+use strict;
+use diagnostics;
+use Env qw(CMHTOOLS);
+use lib "$CMHTOOLS/lib";
+use QualSequence;
+
+my $s = new QualSequence("seq1", "50 50 50 30 30 30 30 30 5 50 3 50 30 3 30 30 30 30 30 30 30 30 20 20 20 10 10 50 60 50 40 40 50 40 40 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30");
+
+print $s->to_string(60);

@@ -1,0 +1,110 @@
+#! /usr/bin/perl -w
+#
+# $Id: fasta-splitter,v 1.2 2006/05/24 23:35:50 cmhall Exp $
+#
+# Charles Hall <cmhall@hawaii.edu>
+#
+# Split a single multi-fasta file into a set of smaller multi-fasta files
+# containing a specified number of sequences.
+#
+# example:
+#
+#  > fasta-splitter --max=2 --name=split < reads.fasta   
+#  splits/split.000000
+#  splits/split.000001
+#  splits/split.000002
+#  splits/split.000003
+#  splits/split.000004
+#  splits/split.000005
+
+use strict;
+
+use Getopt::Mixed;
+
+#defaults
+my $DEFAULT_MAX     = '1';
+my $DEFAULT_NAME    = '';
+my $DEFAULT_OUT_DIR = 'splits';
+
+$| = 1;
+
+my $usage = <<END;
+usage: $0
+    [--help]
+    --max=<n>
+    --name=<name>
+
+--help
+    Print this help message.
+
+--max=<n>
+    Maximum number of sequences to put in each fasta file.
+
+--name=<name>
+    <name> will be the prefix portion of each split created.
+
+END
+
+Getopt::Mixed::init(
+    "help",
+    "max=i",
+    "name=s",
+);
+my %opts = ();
+while((my $option, my $value) = Getopt::Mixed::nextOption()) {
+    $opts{$option} = defined($value) ? $value : 1;
+}
+Getopt::Mixed::cleanup();
+
+if(defined($opts{'help'})) {
+    print "$usage\n";
+    exit;
+}
+
+my $max = $DEFAULT_MAX;
+if(defined($opts{'max'})) {
+    $max = $opts{'max'};
+}
+if($max < 1) {
+    print STDERR "max must be at least 1\n";
+    exit 1;
+}
+
+my $name = $DEFAULT_NAME;
+if(defined($opts{'name'})) {
+    $name = $opts{'name'};
+}
+
+my $out_dir = $DEFAULT_OUT_DIR;
+system("mkdir $out_dir");
+$? && die $!;
+
+my $suffix = 0;
+my $title = '';
+my @t = ();
+my $sfilename = "$name.000000";
+my $count = 0;
+
+open SFILE, ">$out_dir/$sfilename" or die "failed to create $sfilename";
+print "$out_dir/$sfilename\n";
+
+while(<>) {
+    s/^\s+|\s+$//g;
+
+    if(/^(>[^\s]+)/) {
+        $count++;
+
+        if($count > $max) {
+            $count = 1;
+            close SFILE;
+            $suffix++;
+            $sfilename = sprintf("$name.%06d", $suffix);
+            open SFILE, ">$out_dir/$sfilename" or die "failed to create $sfilename";
+            print "$out_dir/$sfilename\n";
+        }
+    }
+    print SFILE "$_\n";
+}
+
+close SFILE;
+
